@@ -1,5 +1,7 @@
 # Glovebox
 
+[![CI](https://github.com/Cluas/glovebox/actions/workflows/ci.yml/badge.svg)](https://github.com/Cluas/glovebox/actions/workflows/ci.yml)
+
 **给已 Root 的 Android 移动路由器用的网页管理后台，定位类似 OpenWrt 的 LuCI。** Glovebox 以 root
 身份跑在随身 5G/4G Wi-Fi 的原厂系统上，把蜂窝网络状态、热点管理、[mihomo](https://github.com/MetaCubeX/mihomo)
 代理和各类日志集中到一个页面里，不需要刷 OpenWrt。
@@ -49,7 +51,7 @@
 
 ## 安装
 
-1. 从 Releases 页面下载 `glovebox-<版本>.zip`（或[自己编译](#编译)），在 Magisk 里安装后重启。
+1. 从 [Releases 页面](https://github.com/Cluas/glovebox/releases)下载 `glovebox-<版本>.zip`（或[自己编译](#编译)），在 Magisk 里安装后重启。
 2. 设置控制台密码（只需一次）：
 
    ```sh

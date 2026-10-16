@@ -1,5 +1,7 @@
 # Glovebox
 
+[![CI](https://github.com/Cluas/glovebox/actions/workflows/ci.yml/badge.svg)](https://github.com/Cluas/glovebox/actions/workflows/ci.yml)
+
 **A LuCI-style web console for rooted Android mobile routers.** Glovebox runs as root on the
 stock firmware of a pocket 5G/4G Wi-Fi router and gives you one place to watch the cellular link,
 manage the hotspot, drive a [mihomo](https://github.com/MetaCubeX/mihomo) proxy and read logs —
@@ -52,7 +54,7 @@ Requirements on the device:
 
 ## Install
 
-1. Download `glovebox-<version>.zip` from the releases page (or [build it](#build)) and install it
+1. Download `glovebox-<version>.zip` from the [releases page](https://github.com/Cluas/glovebox/releases) (or [build it](#build)) and install it
    in the Magisk app, then reboot.
 2. Set the console password (once):
 
