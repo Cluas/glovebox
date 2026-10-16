@@ -12,10 +12,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: false # no dependencies to cache
       - name: gofmt
         run: test -z "$(gofmt -l . | tee /dev/stderr)"
       - name: vet
@@ -28,7 +29,7 @@ jobs:
         run: node --check web/app.js && node --check web/sw.js
       - name: build module
         run: NO_OVERLAY=1 VERSION=ci-${GITHUB_SHA::7} ./build.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: glovebox-module
           path: dist/glovebox-*.zip
