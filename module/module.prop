@@ -1,0 +1,6 @@
+id=glovebox
+name=Glovebox
+version=dev
+versionCode=1
+author=Glovebox contributors
+description=LuCI-style web console for rooted Android mobile routers: Wi-Fi, mihomo proxy, device status and logs at http://glovebox.lan (hotspot clients only). Includes an overlay that raises the hotspot client limit.

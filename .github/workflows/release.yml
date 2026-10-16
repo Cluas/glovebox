@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: test
+        run: go test ./...
+      - name: build module with overlay
+        env:
+          KEYSTORE_B64: ${{ secrets.OVERLAY_KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.OVERLAY_KEYSTORE_PASS }}
+        run: |
+          # a stable signing key keeps overlay upgrades clean; without the secret a throwaway key is generated
+          if [ -n "$KEYSTORE_B64" ]; then echo "$KEYSTORE_B64" | base64 -d > overlay/overlay.keystore; fi
+          export KEYSTORE_PASS=${KEYSTORE_PASS:-android}
+          VERSION=${GITHUB_REF_NAME#v} ./build.sh
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/glovebox-*.zip --generate-notes

@@ -1,0 +1,9 @@
+/dist/
+/overlay/build/
+/overlay/*.apk
+/overlay/*.idsig
+/overlay/*.keystore
+*.tmp
+.DS_Store
+/glovebox
+*.zip

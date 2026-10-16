@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Raises the SoftAP client limit that vendors hard-code to 10. The priority must be higher than
+     vendor overlays such as ZTE's WifiResOverlay_zte (600). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.glovebox.wifi.overlay"
+    android:versionCode="1"
+    android:versionName="1">
+    <uses-sdk android:minSdkVersion="33" android:targetSdkVersion="33" />
+    <overlay
+        android:targetPackage="com.android.wifi.resources"
+        android:targetName="WifiCustomization"
+        android:isStatic="true"
+        android:priority="900" />
+    <application android:hasCode="false" />
+</manifest>

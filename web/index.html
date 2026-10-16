@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en" data-theme="ice">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#05070a">
+<meta name="description" content="Glovebox — web console for rooted Android pocket Wi-Fi routers">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Glovebox">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="preload" href="/fonts/jetbrains-mono-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/jetbrains-mono-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<title>Glovebox</title>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true">
+  <symbol id="i-overview" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+  <symbol id="i-proxy" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 6H15a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h6.5"/></symbol>
+  <symbol id="i-device" viewBox="0 0 24 24"><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 16.5h.01M11 16.5h.01M8.5 9.6a5 5 0 0 1 7 0M5.8 6.9a9 9 0 0 1 12.4 0"/></symbol>
+  <symbol id="i-logs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M7 9l3 3-3 3M12.5 15H17"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3M14 17l5-5-5-5M19 12H9"/></symbol>
+  <symbol id="i-install" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+</svg>
+
+<!-- login / boot -->
+<section id="gate" class="gate">
+  <div class="term">
+    <div class="term-bar"><i></i><i></i><i></i><span>glovebox — tty1</span></div>
+    <div class="term-body">
+<pre class="logo" aria-label="Glovebox">  ___  _      ___  __   __ ___  ___   ___  __  __
+ / __|| |    / _ \ \ \ / /| __|| _ ) / _ \ \ \/ /
+| (_ || |__ | (_) | \ V / | _| | _ \| (_) | &gt;  &lt;
+ \___||____| \___/   \_/  |___||___/ \___/ /_/\_\</pre>
+      <p class="dim"><span data-i18n="gate.tagline">pocket router console</span> · <span id="gate-host"></span></p>
+      <div id="gate-boot" class="boot"><span class="dim">[ .... ]</span> <span data-i18n="gate.connecting">connecting to console</span><span class="caret"></span></div>
+      <form id="login-form" class="login" hidden autocomplete="on">
+        <p><span class="dim">glovebox login:</span> admin</p>
+        <input type="text" name="username" value="admin" autocomplete="username" hidden>
+        <label class="prompt"><span class="dim" data-i18n="gate.password">Password:</span>
+          <input id="login-pw" type="password" autocomplete="current-password" required autofocus aria-label="Password">
+        </label>
+        <p id="login-err" class="err" role="alert"></p>
+        <button class="btn pri wide" type="submit"><span data-i18n="gate.enter">Log in</span> ⏎</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<div id="app" hidden>
+  <aside class="side">
+    <a class="brand" href="#overview" aria-label="Glovebox">
+      <img src="/icons/icon.svg" alt="" width="34" height="34">
+      <span class="brand-text"><b>GLOVEBOX</b><small id="side-host">root@glovebox</small></span>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="#overview" data-page="overview"><span class="ni">01</span><svg class="ic"><use href="#i-overview"/></svg><span class="nl"><b>OVERVIEW</b><small data-i18n="nav.overview">Overview</small></span></a>
+      <a href="#proxy" data-page="proxy"><span class="ni">02</span><svg class="ic"><use href="#i-proxy"/></svg><span class="nl"><b>PROXY</b><small data-i18n="nav.proxy">Proxy</small></span></a>
+      <a href="#device" data-page="device"><span class="ni">03</span><svg class="ic"><use href="#i-device"/></svg><span class="nl"><b>DEVICE</b><small data-i18n="nav.device">Device</small></span></a>
+      <a href="#logs" data-page="logs"><span class="ni">04</span><svg class="ic"><use href="#i-logs"/></svg><span class="nl"><b>LOGS</b><small data-i18n="nav.logs">Logs</small></span></a>
+    </nav>
+    <div class="side-foot">
+      <dl class="mini">
+        <dt>VER</dt><dd data-k="info.version">—</dd>
+        <dt>FW</dt><dd data-k="sys.fw">—</dd>
+        <dt>UP</dt><dd data-k="sys.up">—</dd>
+      </dl>
+      <button class="btn ghost wide" data-install hidden><svg class="ic"><use href="#i-install"/></svg><span data-i18n="pwa.install">Install app</span></button>
+      <button class="btn ghost wide" data-logout><svg class="ic"><use href="#i-logout"/></svg><span data-i18n="act.logout">Log out</span></button>
+    </div>
+  </aside>
+
+  <header class="top">
+    <a class="top-brand" href="#overview" aria-label="Glovebox"><img src="/icons/icon.svg" alt="" width="28" height="28"></a>
+    <div class="crumb"><span class="dim">~/</span><span id="crumb">overview</span><span class="caret"></span></div>
+    <div class="chips">
+      <span class="chip" data-k="chip.cell"><i class="dot"></i><span>CELL</span><b>—</b></span>
+      <span class="chip" data-k="chip.proxy"><i class="dot"></i><span>PROXY</span><b>—</b></span>
+      <span class="chip" data-k="chip.ts" hidden><i class="dot"></i><span>TAILNET</span><b>—</b></span>
+    </div>
+    <time class="clock" id="clock">--:--:--</time>
+  </header>
+
+  <main id="main">
+    <!-- ============ overview ============ -->
+    <section class="page" id="page-overview" aria-labelledby="crumb">
+      <div class="alert" id="skew" hidden>
+        <span class="tag warn">WARN</span>
+        <span><b>CLOCK SKEW</b> · <span id="skew-text"></span></span>
+        <button class="btn pri" data-sync-time data-i18n="act.syncTime">Sync clock from this device</button>
+      </div>
+      <div class="grid">
+        <article class="panel kpi s3" data-k="kpi.down.panel">
+          <header class="ph"><span class="pi">↓</span><h2>DOWNLINK</h2><span class="sub" data-i18n="kpi.down">Downlink</span></header>
+          <div class="pb"><div class="val"><span data-k="kpi.down">—</span><small data-k="kpi.down.u">Mbps</small></div>
+            <div class="kpi-meta"><span>PEAK <b data-k="kpi.down.peak">—</b></span><span>AVG <b data-k="kpi.down.avg">—</b></span></div>
+            <svg class="spark" data-k="kpi.down.spark" viewBox="0 0 120 32" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg></div>
+        </article>
+        <article class="panel kpi s3 alt">
+          <header class="ph"><span class="pi">↑</span><h2>UPLINK</h2><span class="sub" data-i18n="kpi.up">Uplink</span></header>
+          <div class="pb"><div class="val"><span data-k="kpi.up">—</span><small data-k="kpi.up.u">Mbps</small></div>
+            <div class="kpi-meta"><span>PEAK <b data-k="kpi.up.peak">—</b></span><span>AVG <b data-k="kpi.up.avg">—</b></span></div>
+            <svg class="spark" data-k="kpi.up.spark" viewBox="0 0 120 32" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg></div>
+        </article>
+        <article class="panel kpi s3">
+          <header class="ph"><span class="pi">◢</span><h2>SIGNAL</h2><span class="sub" data-i18n="kpi.signal">Signal</span></header>
+          <div class="pb"><div class="val"><span data-k="kpi.rsrp">—</span><small>dBm</small><span class="bars" data-k="kpi.bars"><i></i><i></i><i></i><i></i><i></i></span></div>
+            <div class="kpi-meta"><span data-k="kpi.net">—</span><span>SINR <b data-k="kpi.sinr">—</b></span></div>
+            <svg class="spark" data-k="kpi.sig.spark" viewBox="0 0 120 32" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg></div>
+        </article>
+        <article class="panel kpi s3">
+          <header class="ph"><span class="pi">◎</span><h2>EGRESS</h2><span class="sub" data-i18n="kpi.egress">Egress</span></header>
+          <div class="pb"><div class="val val-text" data-k="kpi.node">—</div>
+            <div class="kpi-meta"><span data-k="kpi.chain" class="ell">—</span></div>
+            <div class="kpi-meta"><span class="tag" data-k="kpi.mode">—</span><span><b data-k="kpi.conns">—</b> CONNS</span></div></div>
+        </article>
+
+        <article class="panel s8 m-full">
+          <header class="ph"><span class="pi">01</span><h2>THROUGHPUT</h2><span class="sub" data-i18n="p.throughput">live · last 3 min</span>
+            <div class="pa legend"><span class="lg a">WAN ↓</span><span class="lg b">WAN ↑</span></div></header>
+          <div class="pb chart-wrap"><canvas id="chart" aria-label="throughput chart"></canvas><div class="chart-tip" id="chart-tip" hidden></div></div>
+        </article>
+        <article class="panel s4 m-full">
+          <header class="ph"><span class="pi">02</span><h2>CELLULAR</h2><span class="sub" data-i18n="p.cell">mobile network</span><div class="pa"><span class="tag" data-k="cell.state">—</span></div></header>
+          <div class="pb">
+            <p class="err" data-k="cell.err" hidden></p>
+            <dl class="kv">
+              <dt data-i18n="cell.operator">Operator</dt><dd data-k="cell.operator">—</dd>
+              <dt data-i18n="cell.network">Network</dt><dd data-k="cell.network">—</dd>
+              <dt>SIM</dt><dd data-k="cell.sim">—</dd>
+              <dt>RSRP</dt><dd><span data-k="cell.rsrp">—</span><span class="q" data-k="cell.rsrp.q"><i></i></span></dd>
+              <dt>SINR</dt><dd><span data-k="cell.sinr">—</span><span class="q" data-k="cell.sinr.q"><i></i></span></dd>
+              <dt>WAN IP</dt><dd data-k="cell.ip">—</dd>
+              <dt data-i18n="cell.month">This month</dt><dd data-k="cell.month">—</dd>
+            </dl>
+            <div class="mini-chart"><span class="dim">RSRP · 10 MIN</span><svg class="spark tall" data-k="cell.spark" viewBox="0 0 240 48" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg></div>
+          </div>
+        </article>
+
+        <article class="panel s6 m-full">
+          <header class="ph"><span class="pi">03</span><h2>ROUTE</h2><span class="sub" data-i18n="p.route">traffic path</span><div class="pa"><a class="btn ghost sm" href="#proxy" data-i18n="act.manage">Manage</a></div></header>
+          <div class="pb">
+            <p class="err" data-k="route.err" hidden></p>
+            <ol class="route" data-k="route.chain"></ol>
+            <dl class="stats">
+              <div><dt>CONNS</dt><dd data-k="route.conns">—</dd></div>
+              <div><dt data-i18n="route.down">Proxied ↓</dt><dd data-k="route.down">—</dd></div>
+              <div><dt data-i18n="route.up">Proxied ↑</dt><dd data-k="route.up">—</dd></div>
+              <div><dt>CORE</dt><dd data-k="route.core">—</dd></div>
+            </dl>
+          </div>
+        </article>
+        <article class="panel s3 m-half">
+          <header class="ph"><span class="pi">04</span><h2>TAILNET</h2></header>
+          <div class="pb ts">
+            <div class="ts-off" data-k="ts.off" hidden><p class="dim" data-i18n="ts.off">Not configured. Set tailscale_proxy and tailscale_probe in config.json to enable.</p></div>
+            <div data-k="ts.on">
+              <div class="big-state" data-k="ts.state">—</div>
+              <dl class="kv tight">
+                <dt data-i18n="ts.latency">Latency</dt><dd data-k="ts.delay">—</dd>
+                <dt data-i18n="ts.checked">Checked</dt><dd data-k="ts.checked">—</dd>
+              </dl>
+              <p class="dim small ell" data-k="ts.target"></p>
+              <button class="btn sm" data-ts-check><svg class="ic"><use href="#i-refresh"/></svg><span data-i18n="act.probe">Probe now</span></button>
+            </div>
+          </div>
+        </article>
+        <article class="panel s3 m-half">
+          <header class="ph"><span class="pi">05</span><h2>USAGE</h2><span class="sub" data-i18n="p.usage">data</span></header>
+          <div class="pb">
+            <div class="usage"><span class="dim" data-i18n="usage.month">This month · cellular</span><b data-k="use.month">—</b>
+              <div class="split"><i class="a" data-k="use.rxbar"></i><i class="b"></i></div>
+              <div class="kpi-meta"><span>↓ <b data-k="use.rx">—</b></span><span>↑ <b data-k="use.tx">—</b></span></div></div>
+            <div class="usage"><span class="dim" data-i18n="usage.lan">Hotspot · live</span>
+              <div class="kpi-meta"><span>↓ <b data-k="use.lanDown">—</b></span><span>↑ <b data-k="use.lanUp">—</b></span></div></div>
+          </div>
+        </article>
+
+        <article class="panel s6 m-full">
+          <header class="ph"><span class="pi">06</span><h2>SYSTEM</h2><span class="sub" data-i18n="p.system">device</span><div class="pa"><span class="tag" data-k="sys.power">—</span></div></header>
+          <div class="pb">
+            <div class="gauges">
+              <figure class="gauge" data-k="g.bat"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span>BAT</span></figcaption></figure>
+              <figure class="gauge" data-k="g.cpu"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span>CPU</span></figcaption></figure>
+              <figure class="gauge" data-k="g.mem"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span>MEM</span></figcaption></figure>
+              <figure class="gauge" data-k="g.temp"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span>TEMP</span></figcaption></figure>
+            </div>
+            <dl class="kv cols">
+              <dt data-i18n="sys.uptime">Uptime</dt><dd data-k="sys.uptime">—</dd>
+              <dt data-i18n="sys.load">Load</dt><dd data-k="sys.load">—</dd>
+              <dt>Wi-Fi</dt><dd data-k="sys.wifi">—</dd>
+              <dt data-i18n="sys.battery">Battery</dt><dd data-k="sys.battery">—</dd>
+              <dt data-i18n="sys.hottest">Hottest</dt><dd data-k="sys.hottest">—</dd>
+              <dt data-i18n="sys.firmware">Firmware</dt><dd data-k="sys.firmware">—</dd>
+            </dl>
+          </div>
+        </article>
+        <article class="panel s6 m-full">
+          <header class="ph"><span class="pi">07</span><h2>CLIENTS</h2><span class="sub" data-i18n="p.clients">connected devices</span><div class="pa"><span class="tag" data-k="clients.count">0</span></div></header>
+          <div class="pb flush"><div class="table-wrap" data-k="clients.table"></div></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ proxy ============ -->
+    <section class="page" id="page-proxy" aria-labelledby="crumb">
+      <div class="toolbar panel">
+        <div class="seg" id="mode" role="group" aria-label="mode">
+          <button data-mode="rule"><b>RULE</b><small data-i18n="mode.rule">Rule</small></button>
+          <button data-mode="global"><b>GLOBAL</b><small data-i18n="mode.global">Global</small></button>
+          <button data-mode="direct"><b>DIRECT</b><small data-i18n="mode.direct">Direct</small></button>
+        </div>
+        <label class="search"><svg class="ic"><use href="#i-search"/></svg><input id="node-filter" type="search" data-i18n-ph="proxy.filter" placeholder="Filter nodes…  /" autocomplete="off"></label>
+        <div class="tb-actions">
+          <button class="btn" id="btn-conns"><span data-i18n="proxy.conns">Conns</span> <b class="badge" data-k="px.conns">—</b></button>
+          <button class="btn pri" id="btn-update"><svg class="ic"><use href="#i-refresh"/></svg><span data-i18n="proxy.updateAll">Update subs</span></button>
+        </div>
+      </div>
+      <p class="err panel pad" id="proxy-err" hidden></p>
+      <div id="groups" class="groups"></div>
+      <article class="panel">
+        <header class="ph"><span class="pi">◇</span><h2>PROVIDERS</h2><span class="sub" data-i18n="p.providers">subscriptions &amp; rule sets</span></header>
+        <div class="pb flush"><div class="table-wrap" id="providers"></div></div>
+      </article>
+    </section>
+
+    <!-- ============ device ============ -->
+    <section class="page" id="page-device" aria-labelledby="crumb">
+      <div class="grid">
+        <div class="s12 wifi-grid" id="wifi"><article class="panel"><div class="pb dim" data-i18n="logs.loading">loading…</div></article></div>
+
+        <article class="panel s12">
+          <header class="ph"><span class="pi">◎</span><h2>CLIENTS</h2><span class="sub" data-i18n="p.clients">connected devices</span><div class="pa"><span class="tag" data-k="clients.count2">0</span></div></header>
+          <div class="pb flush"><div class="table-wrap" data-k="clients.table2"></div></div>
+        </article>
+
+        <article class="panel s6 m-full" id="secure">
+          <header class="ph"><span class="pi"><svg class="ic"><use href="#i-lock"/></svg></span><h2>HTTPS · APP</h2><span class="sub" data-i18n="p.secure">secure access &amp; install</span></header>
+          <div class="pb" id="secure-body"></div>
+        </article>
+
+        <article class="panel s6 m-full">
+          <header class="ph"><span class="pi">⚙</span><h2>PREFERENCES</h2><span class="sub" data-i18n="p.prefs">interface</span></header>
+          <div class="pb form">
+            <div class="field"><span class="lbl" data-i18n="pref.theme">Theme</span>
+              <div class="seg swatches" id="theme-seg">
+                <button data-theme-set="ice"><i style="--c:#4fd8ff"></i>ICE</button>
+                <button data-theme-set="phosphor"><i style="--c:#3dff8b"></i>PHOSPHOR</button>
+                <button data-theme-set="amber"><i style="--c:#ffb547"></i>AMBER</button>
+              </div></div>
+            <div class="field"><span class="lbl" data-i18n="pref.lang">Language</span>
+              <div class="seg" id="lang-seg"></div></div>
+            <label class="field switch"><span class="lbl" data-i18n="pref.crt">CRT scanlines</span><input type="checkbox" id="pref-crt"><span class="sw" aria-hidden="true"></span></label>
+          </div>
+        </article>
+
+        <article class="panel s6 m-full">
+          <header class="ph"><span class="pi">⏻</span><h2>MAINTENANCE</h2><span class="sub" data-i18n="p.maint">maintenance</span></header>
+          <div class="pb actions">
+            <button class="btn" id="btn-box-restart"><svg class="ic"><use href="#i-refresh"/></svg><span data-i18n="act.restartProxy">Restart proxy</span></button>
+            <button class="btn" data-sync-time><span data-i18n="act.syncTime">Sync clock from this device</span></button>
+            <button class="btn danger" id="btn-reboot"><span data-i18n="act.reboot">Reboot device</span></button>
+            <button class="btn ghost" data-logout><svg class="ic"><use href="#i-logout"/></svg><span data-i18n="act.logout">Log out</span></button>
+          </div>
+        </article>
+
+        <article class="panel s6 m-full">
+          <header class="ph"><span class="pi">#</span><h2>PASSWORD</h2><span class="sub" data-i18n="p.password">console password</span></header>
+          <form class="pb form" id="pw-form">
+            <input type="text" name="username" value="admin" autocomplete="username" hidden>
+            <label class="field"><span class="lbl" data-i18n="pw.old">Current password</span><input type="password" id="pw-old" autocomplete="current-password" required></label>
+            <label class="field"><span class="lbl" data-i18n="pw.new">New password (min. 6 characters)</span><input type="password" id="pw-new" autocomplete="new-password" minlength="6" required></label>
+            <label class="field"><span class="lbl" data-i18n="pw.again">Repeat new password</span><input type="password" id="pw-again" autocomplete="new-password" minlength="6" required></label>
+            <button class="btn pri" type="submit" data-i18n="act.save">Save</button>
+          </form>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ logs ============ -->
+    <section class="page" id="page-logs" aria-labelledby="crumb">
+      <div class="term logterm">
+        <div class="term-bar"><i></i><i></i><i></i><span id="log-title">tail -f clash.log</span></div>
+        <div class="log-tools">
+          <div class="seg" id="log-src">
+            <button data-src="mihomo">MIHOMO</button><button data-src="box">BOX</button><button data-src="glovebox">GLOVEBOX</button><button data-src="system">SYSTEM</button>
+          </div>
+          <div class="seg" id="log-level">
+            <button data-level="all">ALL</button><button data-level="info">INFO</button><button data-level="warn">WARN</button><button data-level="error">ERR</button>
+          </div>
+          <label class="search"><svg class="ic"><use href="#i-search"/></svg><input id="log-filter" type="search" data-i18n-ph="logs.filter" placeholder="grep…  /" autocomplete="off"></label>
+          <button class="btn" id="log-follow" aria-pressed="true"><i class="dot ok"></i><span>FOLLOW</span></button>
+          <button class="btn" id="log-wrap" aria-pressed="false">WRAP</button>
+        </div>
+        <div class="log" id="log" tabindex="0" aria-live="off"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="tmux" aria-hidden="true">
+    <span class="tm-sess">[glovebox]</span>
+    <span class="tm-wins" id="tm-wins"></span>
+    <span class="tm-right" id="tm-right"></span>
+  </footer>
+
+  <nav class="tabbar" aria-label="Main">
+    <a href="#overview" data-page="overview"><svg class="ic"><use href="#i-overview"/></svg><span data-i18n="nav.overview">Overview</span></a>
+    <a href="#proxy" data-page="proxy"><svg class="ic"><use href="#i-proxy"/></svg><span data-i18n="nav.proxy">Proxy</span></a>
+    <a href="#device" data-page="device"><svg class="ic"><use href="#i-device"/></svg><span data-i18n="nav.device">Device</span></a>
+    <a href="#logs" data-page="logs"><svg class="ic"><use href="#i-logs"/></svg><span data-i18n="nav.logs">Logs</span></a>
+  </nav>
+</div>
+
+<div id="linkdown" class="linkdown" hidden role="status"><i class="dot bad"></i><b>LINK DOWN</b> <span data-i18n="link.down">Can't reach the console, retrying…</span></div>
+
+<dialog id="modal" class="modal">
+  <form method="dialog" class="panel">
+    <header class="ph"><span class="pi">!</span><h2 id="modal-title"></h2></header>
+    <div class="pb" id="modal-body"></div>
+    <footer class="modal-actions">
+      <button class="btn" value="cancel" id="modal-cancel" data-i18n="act.cancel">Cancel</button>
+      <button class="btn pri" value="ok" id="modal-ok" data-i18n="act.ok">OK</button>
+    </footer>
+  </form>
+</dialog>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<script src="/app.js" defer></script>
+</body>
+</html>

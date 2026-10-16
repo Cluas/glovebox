@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Vendor overlays (Unisoc Marlin3 and ZTE) set 10. The effective limit also depends on the Wi-Fi firmware. -->
+    <integer name="config_wifiHardwareSoftapMaxClientCount">32</integer>
+</resources>
