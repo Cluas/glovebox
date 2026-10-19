@@ -889,30 +889,54 @@ async function loadDevice(first) {
   }
 }
 
+let wifiData = null;
+
 function renderWiFi(d) {
   wifiLoaded = true;
+  wifiData = d;
   const max = d.max_supported || 10;
-  $('#wifi').innerHTML = (d.aps || []).map((ap) => {
+  const aps = d.aps || [];
+  // the F50 runs one band at a time, so the bands are a choice rather than two switches
+  const bandBtn = (chip, label, sub) => `<button type="button" data-wifi-band="${esc(chip)}" class="${d.active === chip ? 'on' : ''}" aria-pressed="${d.active === chip}"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
+  const band = `<article class="panel s12 wifi-band">
+    <header class="ph"><span class="pi">≋</span><h2>WLAN</h2><span class="sub">${t('wifi.bandSub')}</span><div class="pa"><span class="tag ${d.active ? 'ok' : ''}">${d.active ? 'ON' : 'OFF'}</span></div></header>
+    <div class="pb"><div class="seg">${aps.map((ap) => bandBtn(ap.chip, ap.band, ap.ssid)).join('')}${bandBtn('', 'OFF', '')}</div>
+      <p class="note">${t('wifi.bandNote')}</p></div></article>`;
+  $('#wifi').innerHTML = band + aps.map((ap) => {
     const cur = Number(ap.max_clients) || 0;
     const opts = [];
     for (let i = 1; i <= Math.max(max, cur); i++) opts.push(`<option value="${i}"${i === cur ? ' selected' : ''}>${i}</option>`);
-    return `<form class="panel wifi-form" data-chip="${esc(ap.chip)}" data-enabled="${ap.enabled ? 1 : 0}" data-band="${esc(ap.band)}" data-max="${cur}">
+    return `<form class="panel wifi-form" data-chip="${esc(ap.chip)}" data-on="${ap.enabled ? 1 : 0}" data-max="${cur}">
       <header class="ph"><span class="pi">${ap.chip === '1' ? '5G' : '2.4'}</span><h2>WLAN · ${esc(ap.band)}</h2><div class="pa"><span class="tag ${ap.enabled ? 'ok' : ''}">${ap.enabled ? 'ON' : 'OFF'}</span></div></header>
       <div class="pb">
-        <label class="field switch"><span class="lbl">${t('wifi.enabled')}</span><input type="checkbox" name="enabled" ${ap.enabled ? 'checked' : ''}><span class="sw"></span></label>
         <label class="field"><span class="lbl">${t('wifi.ssid')}</span><input type="text" name="ssid" value="${esc(ap.ssid)}" maxlength="32" autocomplete="off" spellcheck="false"></label>
         <div class="field"><span class="lbl">${t('wifi.password')}</span><div class="pw-row">
           <input type="password" name="password" value="${esc(ap.password)}" autocomplete="off" spellcheck="false" aria-label="${esc(t('wifi.password'))}">
           <button class="btn" type="button" data-showpw>${t('act.show')}</button></div></div>
         <label class="field"><span class="lbl">${t('wifi.max')} · <span class="dim">${t('wifi.maxNote', { n: max })}</span></span><select name="max">${opts.join('')}</select></label>
         <label class="field switch"><span class="lbl">${t('wifi.hidden')}</span><input type="checkbox" name="hidden" ${ap.hidden ? 'checked' : ''}><span class="sw"></span></label>
-        <p class="note">${esc(t('wifi.note', { auth: ap.auth_mode || '—' }))}</p>
+        <p class="note">${esc(t(ap.enabled ? 'wifi.note' : 'wifi.noteIdle', { auth: ap.auth_mode || '—' }))}</p>
         <button class="btn pri" type="submit">${t('act.save')}</button>
       </div></form>`;
   }).join('');
 }
 
-$('#wifi').addEventListener('click', (ev) => {
+$('#wifi').addEventListener('click', async (ev) => {
+  const bb = ev.target.closest('[data-wifi-band]');
+  if (bb) {
+    if (bb.classList.contains('on')) return;
+    const chip = bb.dataset.wifiBand;
+    const ap = (wifiData?.aps || []).find((a) => a.chip === chip);
+    const msg = ap ? t('wifi.confirmBand', { band: esc(ap.band), ssid: esc(ap.ssid) }) : t('wifi.confirmOff');
+    if (!(await confirmBox(msg, { danger: true }))) return;
+    await busy(bb, '', async () => {
+      await api('/api/wifi/band', { chip }, { timeout: 40000 });
+      toast(ap ? t('wifi.bandSet', { band: ap.band }) : t('wifi.offDone'));
+      wifiLoaded = false;
+      setTimeout(() => page === 'device' && loadDevice(true), 3000);
+    }).catch(fail);
+    return;
+  }
   const b = ev.target.closest('[data-showpw]');
   if (!b) return;
   const inp = b.parentElement.querySelector('input');
@@ -923,25 +947,23 @@ $('#wifi').addEventListener('click', (ev) => {
 $('#wifi').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const f = ev.target;
-  const band = f.dataset.band;
   const maxSel = Number(f.max.value);
   const body = {
     chip: f.dataset.chip,
-    enabled: f.enabled.checked,
     ssid: f.ssid.value.trim(),
     password: f.password.value,
     hidden: f.hidden.checked,
     max_clients: maxSel !== Number(f.dataset.max) ? maxSel : 0,
   };
-  const switching = (f.dataset.enabled === '1') !== body.enabled;
-  const msg = switching
-    ? t(body.enabled ? 'wifi.confirmOn' : 'wifi.confirmOff', { band: esc(band) })
-    : t('wifi.confirmSave', { ssid: esc(body.ssid) });
-  if (!(await confirmBox(msg, { danger: switching && !body.enabled }))) return;
+  const ap = (wifiData?.aps || []).find((a) => a.chip === body.chip);
+  const msg = f.dataset.on === '1'
+    ? t('wifi.confirmSave', { ssid: esc(body.ssid) })
+    : t('wifi.confirmSaveIdle', { band: esc(ap ? ap.band : '') });
+  if (!(await confirmBox(msg))) return;
   const btn = f.querySelector('button[type=submit]');
   await busy(btn, t('act.save'), async () => {
     await api('/api/wifi', body);
-    toast(switching ? t('wifi.switched', { state: t(body.enabled ? 'wifi.on' : 'wifi.off') }) : t('wifi.saved'));
+    toast(t('wifi.saved'));
     wifiLoaded = false;
     setTimeout(() => page === 'device' && loadDevice(true), 1500);
   }).catch(fail);

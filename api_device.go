@@ -76,19 +76,46 @@ func bandName(chip string) string {
 	return "2.4 GHz"
 }
 
+// chipEnum is the switchWiFiChip name of an access point: ChipIndex 0 is "chip1"
+func chipEnum(ap map[string]any) string {
+	n, _ := strconv.Atoi(str(ap["ChipIndex"]))
+	return "chip" + strconv.Itoa(n+1)
+}
+
+// activeChip returns the ChipIndex of the band that is on, or "" when Wi-Fi is off. The F50
+// runs one band at a time; with the module off the switches keep the band used last.
+func activeChip(module map[string]any, aps []map[string]any) string {
+	if str(module["WiFiModuleSwitch"]) != "1" {
+		return ""
+	}
+	for _, e := range aps {
+		if str(e["AccessPointSwitchStatus"]) == "1" {
+			return str(e["ChipIndex"])
+		}
+	}
+	return ""
+}
+
 func (s *server) handleWiFi(w http.ResponseWriter, r *http.Request) {
-	aps, err := s.queryAPs(r.Context())
+	ctx := r.Context()
+	aps, err := s.queryAPs(ctx)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
+	module, err := s.zte.get(ctx, "queryWiFiModuleSwitch")
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	active := activeChip(module, aps)
 	var out []apInfo
 	for _, e := range aps {
 		pw, _ := base64.StdEncoding.DecodeString(str(e["Password"]))
 		out = append(out, apInfo{
 			Chip:      str(e["ChipIndex"]),
 			Band:      bandName(str(e["ChipIndex"])),
-			Enabled:   str(e["AccessPointSwitchStatus"]) == "1",
+			Enabled:   str(e["ChipIndex"]) == active,
 			SSID:      str(e["SSID"]),
 			Password:  string(pw),
 			AuthMode:  str(e["AuthMode"]),
@@ -96,15 +123,58 @@ func (s *server) handleWiFi(w http.ResponseWriter, r *http.Request) {
 			MaxClient: str(e["ApMaxStationNumber"]),
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"aps": out, "max_supported": s.maxSupportedClients(r.Context())})
+	writeJSON(w, http.StatusOK, map[string]any{"aps": out, "active": active, "max_supported": s.maxSupportedClients(ctx)})
 }
 
-// handleSetWiFi changes one band's switch / SSID / password / limits. The request mirrors
-// what the vendor web UI sends (setAccessPointInfo in its service.js).
+// handleWiFiBand picks the band that is on ("" turns Wi-Fi off). Turning one band on turns the
+// other off, also from off; the vendor UI does the same and hides "both".
+func (s *server) handleWiFiBand(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Chip string `json:"chip"`
+	}
+	if err := readBody(r, &in); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	ctx := r.Context()
+	if in.Chip == "" {
+		if _, err := s.zte.set(ctx, "switchWiFiModule", url.Values{"SwitchOption": {"0"}}); err != nil {
+			writeErr(w, http.StatusBadGateway, err)
+			return
+		}
+		log.Printf("wifi off")
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
+	aps, err := s.queryAPs(ctx)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	var cur map[string]any
+	for _, e := range aps {
+		if str(e["ChipIndex"]) == in.Chip {
+			cur = e
+		}
+	}
+	if cur == nil {
+		writeErr(w, http.StatusBadRequest, apiErr("wifi_chip_unknown", "no access point with ChipIndex="+in.Chip, "chip", in.Chip))
+		return
+	}
+	f := url.Values{"ChipEnum": {chipEnum(cur)}, "GuestEnable": {"0"}}
+	if _, err := s.zte.set(ctx, "switchWiFiChip", f); err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	log.Printf("wifi band chip=%s", in.Chip)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handleSetWiFi changes one band's SSID / password / limits; handleWiFiBand switches bands.
+// The request mirrors what the vendor web UI sends (setAccessPointInfo in its service.js).
 func (s *server) handleSetWiFi(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Chip     string `json:"chip"`
-		Enabled  bool   `json:"enabled"`
 		SSID     string `json:"ssid"`
 		Password string `json:"password"`
 		Hidden   bool   `json:"hidden"`
@@ -131,59 +201,53 @@ func (s *server) handleSetWiFi(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, apiErr("wifi_chip_unknown", "no access point with ChipIndex="+in.Chip, "chip", in.Chip))
 		return
 	}
-	sw := "0"
-	if in.Enabled {
-		sw = "1"
+	if len(in.SSID) < 1 || len(in.SSID) > 32 {
+		writeErr(w, http.StatusBadRequest, apiErr("ssid_length", "SSID must be 1-32 bytes"))
+		return
 	}
-	f := url.Values{
-		"ChipIndex":               {in.Chip},
-		"AccessPointIndex":        {"0"},
-		"QrImageShow":             {str(cur["QrImageShow"])},
-		"lan_sec_ssid_control":    {""},
-		"wifi_syncparas_flag":     {""},
-		"AccessPointSwitchStatus": {sw},
+	auth := str(cur["AuthMode"])
+	hidden := "0"
+	if in.Hidden {
+		hidden = "1"
 	}
-	if sw == str(cur["AccessPointSwitchStatus"]) {
-		// other fields are only sent when the switch is unchanged (same as the vendor UI)
-		if len(in.SSID) < 1 || len(in.SSID) > 32 {
-			writeErr(w, http.StatusBadRequest, apiErr("ssid_length", "SSID must be 1-32 bytes"))
+	maxSta := str(cur["ApMaxStationNumber"])
+	if in.MaxClients != 0 {
+		if limit := s.maxSupportedClients(ctx); in.MaxClients < 1 || in.MaxClients > limit {
+			writeErr(w, http.StatusBadRequest, apiErr("max_clients_range", fmt.Sprintf("max clients must be 1-%d", limit), "max", limit))
 			return
 		}
-		auth := str(cur["AuthMode"])
-		hidden := "0"
-		if in.Hidden {
-			hidden = "1"
+		maxSta = strconv.Itoa(in.MaxClients)
+	}
+	f := url.Values{
+		"ChipIndex":            {in.Chip},
+		"AccessPointIndex":     {"0"},
+		"QrImageShow":          {str(cur["QrImageShow"])},
+		"lan_sec_ssid_control": {""},
+		"wifi_syncparas_flag":  {""},
+		// unchanged, so the other fields are applied (same as the vendor UI)
+		"AccessPointSwitchStatus": {str(cur["AccessPointSwitchStatus"])},
+		"SSID":                    {in.SSID},
+		"ApIsolate":               {str(cur["ApIsolate"])},
+		"AuthMode":                {auth},
+		"ApBroadcastDisabled":     {hidden},
+		"ApMaxStationNumber":      {maxSta},
+	}
+	switch auth {
+	case "WPAPSKWPA2PSK", "WPA2PSK", "WPA3PSK", "WPA2PSKWPA3PSK":
+		if len(in.Password) < 8 || len(in.Password) > 63 {
+			writeErr(w, http.StatusBadRequest, apiErr("wifi_password_length", "Wi-Fi password must be 8-63 characters"))
+			return
 		}
-		f.Set("SSID", in.SSID)
-		f.Set("ApIsolate", str(cur["ApIsolate"]))
-		f.Set("AuthMode", auth)
-		f.Set("ApBroadcastDisabled", hidden)
-		maxSta := str(cur["ApMaxStationNumber"])
-		if in.MaxClients != 0 {
-			if limit := s.maxSupportedClients(ctx); in.MaxClients < 1 || in.MaxClients > limit {
-				writeErr(w, http.StatusBadRequest, apiErr("max_clients_range", fmt.Sprintf("max clients must be 1-%d", limit), "max", limit))
-				return
-			}
-			maxSta = strconv.Itoa(in.MaxClients)
-		}
-		f.Set("ApMaxStationNumber", maxSta)
-		switch auth {
-		case "WPAPSKWPA2PSK", "WPA2PSK", "WPA3PSK", "WPA2PSKWPA3PSK":
-			if len(in.Password) < 8 || len(in.Password) > 63 {
-				writeErr(w, http.StatusBadRequest, apiErr("wifi_password_length", "Wi-Fi password must be 8-63 characters"))
-				return
-			}
-			f.Set("EncrypType", str(cur["EncrypType"]))
-			f.Set("Password", base64.StdEncoding.EncodeToString([]byte(in.Password)))
-		default:
-			f.Set("EncrypType", "NONE")
-		}
+		f.Set("EncrypType", str(cur["EncrypType"]))
+		f.Set("Password", base64.StdEncoding.EncodeToString([]byte(in.Password)))
+	default:
+		f.Set("EncrypType", "NONE")
 	}
 	if _, err := s.zte.set(ctx, "setAccessPointInfo", f); err != nil {
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
-	log.Printf("wifi chip=%s enabled=%v ssid=%q max=%d", in.Chip, in.Enabled, in.SSID, in.MaxClients)
+	log.Printf("wifi chip=%s ssid=%q max=%d", in.Chip, in.SSID, in.MaxClients)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

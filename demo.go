@@ -231,6 +231,7 @@ type fakeZTE struct {
 	start    time.Time
 	loggedIn bool
 	aps      []map[string]any
+	wifiOn   bool // queryWiFiModuleSwitch; one band is on at a time, like the F50
 }
 
 func newFakeZTE() *fakeZTE {
@@ -242,7 +243,7 @@ func newFakeZTE() *fakeZTE {
 			"ApMaxStationNumber": "10", "ApIsolate": "0", "QrImageShow": "1",
 		}
 	}
-	return &fakeZTE{start: time.Now(), aps: []map[string]any{ap("0", "0", "Glovebox"), ap("1", "1", "Glovebox-5G")}}
+	return &fakeZTE{start: time.Now(), wifiOn: true, aps: []map[string]any{ap("0", "0", "Glovebox"), ap("1", "1", "Glovebox-5G")}}
 }
 
 var demoStations = []map[string]any{
@@ -303,8 +304,11 @@ func (f *fakeZTE) field(name string) any {
 		return strconv.FormatInt(3_870_000_000+int64(t*180_000), 10)
 	case "SSID1":
 		return str(f.aps[1]["SSID"])
-	case "wifi_onoff_state":
-		return "1"
+	case "wifi_onoff_state", "WiFiModuleSwitch":
+		if f.wifiOn {
+			return "1"
+		}
+		return "0"
 	case "Z5g_rsrp":
 		return strconv.FormatFloat(rsrp, 'f', 0, 64)
 	case "Z5g_SINR", "Z5g_snr":
@@ -349,6 +353,9 @@ func (f *fakeZTE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		for _, c := range cmds {
+			if c == "queryWiFiModuleSwitch" {
+				c = "WiFiModuleSwitch"
+			}
 			out[c] = f.field(c)
 		}
 	case "/goform/goform_set_cmd_process":
@@ -363,18 +370,34 @@ func (f *fakeZTE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if str(ap["ChipIndex"]) != r.PostForm.Get("ChipIndex") {
 					continue
 				}
-				sw := r.PostForm.Get("AccessPointSwitchStatus")
-				if sw != str(ap["AccessPointSwitchStatus"]) {
-					ap["AccessPointSwitchStatus"] = sw
-				} else {
-					for _, k := range []string{"SSID", "Password", "ApBroadcastDisabled", "ApMaxStationNumber"} {
-						if v := r.PostForm.Get(k); v != "" {
-							ap[k] = v
-						}
+				for _, k := range []string{"SSID", "Password", "ApBroadcastDisabled", "ApMaxStationNumber"} {
+					if v := r.PostForm.Get(k); v != "" {
+						ap[k] = v
 					}
 				}
 				out["result"] = "success"
 			}
+		case "switchWiFiChip":
+			want := r.PostForm.Get("ChipEnum")
+			out["result"] = "failure"
+			for _, ap := range f.aps {
+				if chipEnum(ap) == want {
+					out["result"] = "success"
+				}
+			}
+			if out["result"] != "success" {
+				break
+			}
+			f.wifiOn = true
+			for _, ap := range f.aps {
+				ap["AccessPointSwitchStatus"] = "0"
+				if chipEnum(ap) == want {
+					ap["AccessPointSwitchStatus"] = "1"
+				}
+			}
+		case "switchWiFiModule":
+			f.wifiOn = r.PostForm.Get("SwitchOption") == "1"
+			out["result"] = "success"
 		default:
 			out["result"] = "failure"
 		}

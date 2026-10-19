@@ -80,8 +80,9 @@ func TestAPIAuthAndErrors(t *testing.T) {
 		{"/api/proxies/mode", `{"mode":"bogus"}`, "mode_invalid"},
 		{"/api/console/password", `{"old":"glovebox","new":"abc"}`, "password_short"},
 		{"/api/console/password", `{"old":"nope","new":"abcdef"}`, "old_password_wrong"},
-		{"/api/wifi", `{"chip":"1","enabled":true,"ssid":"x","password":"12345678","max_clients":999}`, "max_clients_range"},
-		{"/api/wifi", `{"chip":"9","enabled":true}`, "wifi_chip_unknown"},
+		{"/api/wifi", `{"chip":"1","ssid":"x","password":"12345678","max_clients":999}`, "max_clients_range"},
+		{"/api/wifi", `{"chip":"9"}`, "wifi_chip_unknown"},
+		{"/api/wifi/band", `{"chip":"9"}`, "wifi_chip_unknown"},
 		{"/api/proxies/mode", `not json`, "bad_request"},
 	}
 	for _, tc := range cases {
@@ -124,5 +125,50 @@ func TestReportTestWithoutChannels(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &out)
 	if rec.Code != http.StatusBadRequest || out["code"] != "report_off" {
 		t.Fatalf("%d %v", rec.Code, out)
+	}
+}
+
+// the F50 runs one band at a time: picking one turns the other off
+func TestWiFiBands(t *testing.T) {
+	c := newTestClient(t)
+	if code, out := c.do("POST", "/api/login", `{"password":"`+demoPassword+`"}`, true); code != http.StatusOK {
+		t.Fatalf("login: %d %v", code, out)
+	}
+	bands := func() string {
+		t.Helper()
+		code, out := c.do("GET", "/api/wifi", "", false)
+		aps, _ := out["aps"].([]any)
+		if code != http.StatusOK || len(aps) != 2 {
+			t.Fatalf("wifi: %d %v", code, out)
+		}
+		on := ""
+		for _, a := range aps {
+			if ap := a.(map[string]any); ap["enabled"] == true {
+				on += ap["chip"].(string)
+			}
+		}
+		return fmt.Sprintf("active=%v on=%s", out["active"], on)
+	}
+	if got := bands(); got != "active=1 on=1" {
+		t.Fatalf("demo starts with %s", got)
+	}
+	for _, tc := range []struct{ chip, want string }{
+		{"0", "active=0 on=0"},
+		{"", "active= on="},
+		{"1", "active=1 on=1"},
+	} {
+		if code, out := c.do("POST", "/api/wifi/band", `{"chip":"`+tc.chip+`"}`, true); code != http.StatusOK {
+			t.Fatalf("band %q: %d %v", tc.chip, code, out)
+		}
+		if got := bands(); got != tc.want {
+			t.Fatalf("after band %q: %s, want %s", tc.chip, got, tc.want)
+		}
+	}
+	// settings of the band that is off can be changed without turning it on
+	if code, out := c.do("POST", "/api/wifi", `{"chip":"0","ssid":"Spare","password":"12345678"}`, true); code != http.StatusOK {
+		t.Fatalf("save idle band: %d %v", code, out)
+	}
+	if got := bands(); got != "active=1 on=1" {
+		t.Fatalf("saving the idle band switched bands: %s", got)
 	}
 }

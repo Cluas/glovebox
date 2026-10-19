@@ -25,7 +25,7 @@ English · [简体中文](README.zh-CN.md)
 | --- | --- |
 | Overview | Live WAN throughput chart, signal (RSRP/SINR/band) with history, egress node and proxy chain, Tailscale reachability probe, monthly data usage, battery/CPU/memory/temperature gauges, connected clients, health checks and their events |
 | Proxy | mihomo groups and nodes, switch nodes, latency tests, rule/global/direct mode, update subscriptions and rule sets, live connections with filter and "close all" |
-| Device | Hotspot SSID/password/visibility/on-off per band, max clients (up to the system limit), connected devices, alert and log shipping status, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme/language |
+| Device | Hotspot band (2.4 GHz or 5 GHz — the F50 runs one at a time) or off, SSID/password/visibility per band, max clients (up to the system limit), connected devices, alert and log shipping status, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme/language |
 | Logs | mihomo, Box for Root, Glovebox and Android logcat — level filter, grep with highlight, follow/pause, wrap |
 
 Keyboard: `1`–`4` switch pages, `/` focuses the filter.

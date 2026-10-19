@@ -174,6 +174,7 @@ func (s *server) routes() http.Handler {
 	authed("GET /api/clients", s.handleClients)
 	authed("GET /api/wifi", s.handleWiFi)
 	authed("POST /api/wifi", s.handleSetWiFi)
+	authed("POST /api/wifi/band", s.handleWiFiBand)
 	authed("POST /api/box/restart", s.handleBoxRestart)
 	authed("POST /api/device/reboot", s.handleReboot)
 	authed("POST /api/device/time", s.handleSetTime)

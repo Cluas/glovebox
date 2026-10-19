@@ -381,8 +381,9 @@ td .sub { display: block; color: var(--fg-2); font-size: .76rem; }
 
 /* ---------- device ---------- */
 .wifi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: var(--gap); }
-.wifi-form .pb { display: grid; gap: 14px; }
-.wifi-form .note { margin: 0; font-size: .8rem; color: var(--fg-2); }
+.wifi-form .pb, .wifi-band .pb { display: grid; gap: 14px; }
+.wifi-band .pb { justify-items: start; }
+.wifi-form .note, .wifi-band .note { margin: 0; font-size: .8rem; color: var(--fg-2); }
 .secure-steps { margin: 12px 0 0; }
 .secure-steps details { border-top: 1px dashed var(--line-2); padding: 10px 0; }
 .secure-steps summary { cursor: pointer; color: var(--fg-1); min-height: 28px; }
@@ -499,8 +500,11 @@ body.stale main { filter: saturate(.3) brightness(.8); transition: filter .4s; }
   .kv.cols { grid-template-columns: auto 1fr; }
   .gauges { gap: 4px; }
   .toolbar { padding: 10px; }
-  .toolbar .seg { width: 100%; }
-  .toolbar .seg button { flex: 1; justify-content: center; }
+  .toolbar .seg, .wifi-band .seg { width: 100%; }
+  .toolbar .seg button, .wifi-band .seg button { flex: 1; justify-content: center; }
+  .wifi-band .seg button { flex-direction: column; gap: 2px; min-width: 0; padding: 6px 8px; }
+  .wifi-band .seg button b { white-space: nowrap; }
+  .wifi-band .seg button small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tb-actions { width: 100%; }
   .tb-actions .btn { flex: 1; }
   .nodes { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px; }
