@@ -232,3 +232,13 @@ func (m *mihomoClient) connections(ctx context.Context) (*mihomoConns, error) {
 func (m *mihomoClient) closeConnections(ctx context.Context) error {
 	return m.call(ctx, http.MethodDelete, "/connections", nil, nil)
 }
+
+// dnsQuery resolves name through mihomo's resolver (the configured nameservers, not fake-ip) and
+// returns the DNS response code: 0 NOERROR, 2 SERVFAIL, 3 NXDOMAIN
+func (m *mihomoClient) dnsQuery(ctx context.Context, name, qtype string) (int, error) {
+	var v struct {
+		Status int `json:"Status"`
+	}
+	err := m.call(ctx, http.MethodGet, "/dns/query?"+url.Values{"name": {name}, "type": {qtype}}.Encode(), nil, &v)
+	return v.Status, err
+}

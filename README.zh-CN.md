@@ -22,9 +22,9 @@
 
 | 页面 | 内容 |
 | --- | --- |
-| 概览 | WAN 实时吞吐曲线、信号（RSRP/SINR/频段）及历史、出口节点和代理链、Tailscale 连通性探测、本月流量、电量/CPU/内存/温度、已连接设备 |
+| 概览 | WAN 实时吞吐曲线、信号（RSRP/SINR/频段）及历史、出口节点和代理链、Tailscale 连通性探测、本月流量、电量/CPU/内存/温度、已连接设备、健康检查及其事件 |
 | 代理 | mihomo 分组和节点、切换节点、测速、规则/全局/直连模式、更新订阅和规则集、实时连接（可筛选、一键断开） |
-| 设备 | 每个频段的热点名称/密码/隐藏/开关、最大连接数（不超过系统上限）、已连接设备、HTTPS 与安装指引、重启代理、重启设备、校正设备时间、控制台密码、主题和语言 |
+| 设备 | 每个频段的热点名称/密码/隐藏/开关、最大连接数（不超过系统上限）、已连接设备、告警和日志推送状态、HTTPS 与安装指引、重启代理、重启设备、校正设备时间、控制台密码、主题和语言 |
 | 日志 | mihomo、Box for Root、Glovebox、Android logcat；级别筛选、grep 高亮、跟随/暂停、自动换行 |
 
 键盘：`1`–`4` 切换页面，`/` 聚焦筛选框。
@@ -109,9 +109,59 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 | `tailscale_proxy`, `tailscale_probe` | | mihomo 出站名和经它访问的 tailnet 地址；两者都设置后才显示 Tailnet 卡片 |
 | `delay_url` | `https://www.gstatic.com/generate_204` | 测速使用的地址 |
 | `wan_prefixes`, `lan_dev` | `sipa_eth`, `rmnet`, `ccmni` / `br0` | 统计流量速率用的网卡 |
+| `device_name` | `glovebox` | 告警里的设备名，也是推送日志的 `host` 标签 |
+| `report_proxy` | | 告警和日志推送使用的代理，支持 `http://` 和 `socks5://` |
+| `report_lang` | `en` | 告警语言，取 `web/i18n` 里的语言代码 |
+| `telegram_token`, `telegram_chat` | | Telegram bot token 和 chat ID；两者都设置后启用 Telegram 告警 |
+| `webhook_url` | | 每个健康事件都以 JSON POST 到这个地址 |
+| `log_push_url` | | 日志和事件的 Loki 推送地址；URL 里的 `user:password@` 作为 Basic 认证发送 |
+| `dns_probe` | `127.0.0.1:1053` | DNS 检查要询问的 mihomo DNS 监听地址；为空则跳过这一项 |
 
 `/data/adb/glovebox/` 下的文件：`config.json`、`glovebox.log`（超过 1 MiB 轮转）、`stdout.log`
-（`service.sh` 守护进程的输出）和 `tls/`（本机 CA）。升级或卸载模块都不会删除它们。
+（`service.sh` 守护进程的输出）、`tls/`（本机 CA）、`events.jsonl`（健康事件）、`clock`（最后一次
+可信的时间）以及 `notify.json` / `ship.json`（告警和日志推送的进度）。升级或卸载模块都不会删除它们。
+
+## 健康检查与上报
+
+Glovebox 每 30 秒检查一次：mihomo、它的 DNS（热点客户端被转发到的监听端口，以及后面的上游服务器）、
+主代理分组、Tailscale、蜂窝数据、热点、时钟和剩余内存。连续两轮失败才算异常（蜂窝数据要持续 5 分钟，
+短暂没信号不会报），一轮正常就算恢复。依赖项异常时，依赖它的检查会跳过，告警只报根因：mihomo 挂了
+不再报 DNS 和代理，蜂窝数据断了不再报代理。概览页列出各检查项和它们的状态变化。
+
+F50 没有 RTC 电池，断电后开机时间会回到很早的日期，直到蜂窝网络授时。Glovebox 发现时钟比上次见到的
+时间还早时，会暂停告警和日志推送，等时间校正后再补发，并修正这段时间里事件的时间戳。
+
+事件可以通过三个可选渠道上报，在配置里填好对应字段就会启用：
+
+- **Telegram**：用 [@BotFather](https://t.me/BotFather) 创建 bot，给它发一条消息，再从
+  `https://api.telegram.org/bot<token>/getUpdates` 里找到 chat ID。异常告警会附上 mihomo 最近的警告日志。
+- **Webhook**：每个事件以 JSON POST 一次（`device`、`time`、`check`、`state`、`msg`、`dur`、
+  `text`）。
+- **日志**：mihomo、Box for Root、Glovebox 的日志和健康事件按 Loki 推送协议发送，Grafana Loki、
+  VictoriaLogs、Grafana Alloy 都能接收。日志文件本身就是缓冲：服务器确认收到后才算发出，没信号时
+  写下的日志之后会补发。
+
+没送出去的告警和日志会退避重试，重启或断电后也会继续。「设备」页显示每个渠道的状态，也可以发一条
+测试消息。
+
+Box for Root 会让设备自己发往私有地址的流量绕过 mihomo。要经 tailnet 访问家里的服务器，就把
+`report_proxy` 设为 mihomo 的 mixed 端口，并在 mihomo 规则里为服务器地址指定出站：
+
+```sh
+echo '{"device_name":"router","report_proxy":"http://127.0.0.1:7890",
+  "telegram_token":"123456:ABC-DEF","telegram_chat":"42",
+  "log_push_url":"http://192.168.1.10:9428/insert/loki/api/v1/push"}' \
+  | su -c '/data/adb/modules/glovebox/bin/glovebox config import'
+```
+
+下面是保留 30 天的 VictoriaLogs 服务器；网页界面在 `http://<主机>:9428/select/vmui`，
+查询 `source:mihomo` 看 mihomo 日志，`source:events` 看健康事件：
+
+```sh
+docker run -d --name victorialogs --restart unless-stopped -p 9428:9428 \
+  -v victorialogs:/vlogs victoriametrics/victoria-logs:v1.53.0 \
+  -storageDataPath=/vlogs -retentionPeriod=30d
+```
 
 ## 工作原理
 
@@ -120,7 +170,8 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
                            ├─ vendor web API   192.168.0.1:8080  (signal, SIM, usage, clients, Wi-Fi)
                            ├─ mihomo REST API   127.0.0.1:9091   (groups, nodes, providers, connections)
                            ├─ /proc, /sys                       (rates, CPU, memory, battery, thermal)
-                           └─ shell                              (box.service, logcat, reboot, date)
+                           ├─ shell                              (box.service, logcat, reboot, date)
+                           └─ report_proxy ──▶ Telegram, webhook, Loki push (alerts, logs)
 ```
 
 原厂登录哈希直接从原厂数据库读取，不需要保存管理员密码；某个哈希登录失败一次后就不再重试，避免触发原厂的锁定。

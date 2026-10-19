@@ -23,9 +23,9 @@ English · [简体中文](README.zh-CN.md)
 
 | Page | What you get |
 | --- | --- |
-| Overview | Live WAN throughput chart, signal (RSRP/SINR/band) with history, egress node and proxy chain, Tailscale reachability probe, monthly data usage, battery/CPU/memory/temperature gauges, connected clients |
+| Overview | Live WAN throughput chart, signal (RSRP/SINR/band) with history, egress node and proxy chain, Tailscale reachability probe, monthly data usage, battery/CPU/memory/temperature gauges, connected clients, health checks and their events |
 | Proxy | mihomo groups and nodes, switch nodes, latency tests, rule/global/direct mode, update subscriptions and rule sets, live connections with filter and "close all" |
-| Device | Hotspot SSID/password/visibility/on-off per band, max clients (up to the system limit), connected devices, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme/language |
+| Device | Hotspot SSID/password/visibility/on-off per band, max clients (up to the system limit), connected devices, alert and log shipping status, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme/language |
 | Logs | mihomo, Box for Root, Glovebox and Android logcat — level filter, grep with highlight, follow/pause, wrap |
 
 Keyboard: `1`–`4` switch pages, `/` focuses the filter.
@@ -117,10 +117,67 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 | `tailscale_proxy`, `tailscale_probe` | | mihomo outbound and a tailnet URL to probe through it; both enable the Tailnet card |
 | `delay_url` | `https://www.gstatic.com/generate_204` | URL for latency tests |
 | `wan_prefixes`, `lan_dev` | `sipa_eth`, `rmnet`, `ccmni` / `br0` | Interfaces used for traffic rates |
+| `device_name` | `glovebox` | Name in alerts and the `host` label of shipped logs |
+| `report_proxy` | | `http://` or `socks5://` proxy for alerts and log shipping |
+| `report_lang` | `en` | Language of alerts, one of the `web/i18n` locales |
+| `telegram_token`, `telegram_chat` | | Telegram bot token and chat ID; both enable Telegram alerts |
+| `webhook_url` | | Receives every health event as a JSON POST |
+| `log_push_url` | | Loki push endpoint for logs and events; `user:password@` in the URL is sent as basic auth |
+| `dns_probe` | `127.0.0.1:1053` | mihomo DNS listener asked by the DNS check; empty skips that part |
 
 Files in `/data/adb/glovebox/`: `config.json`, `glovebox.log` (rotated at 1 MiB),
-`stdout.log` (output of the supervisor in `service.sh`) and `tls/` (the local CA). They survive
-module upgrades and uninstalls.
+`stdout.log` (output of the supervisor in `service.sh`), `tls/` (the local CA), `events.jsonl`
+(health events), `clock` (the last trusted time) and `notify.json` / `ship.json` (how far alerts
+and log shipping got). They survive module upgrades and uninstalls.
+
+## Health checks and reporting
+
+Every 30 seconds Glovebox checks mihomo, its DNS (the listener hotspot clients are redirected to,
+and the upstream servers behind it), the main proxy group, Tailscale, cellular data, the hotspot,
+the clock and free memory. A check counts as failing after two bad rounds (cellular data: after
+5 minutes, so short coverage gaps stay quiet) and recovers after one good round. Checks that
+depend on a failing one are skipped, so an alert names the cause: no DNS or proxy alerts while
+mihomo is down, no proxy alerts while cellular data is. The Overview page lists the checks and
+their state changes.
+
+The F50 has no RTC battery: after a power cut it boots at an old date until the cellular network
+sets the time. Glovebox notices that the clock is behind the last time it saw, holds alerts and
+log shipping until it is corrected, and then fixes the timestamps of the events in between.
+
+Three optional channels report the events, each enabled by its keys in the configuration:
+
+- **Telegram**: create a bot with [@BotFather](https://t.me/BotFather), send it a message, and
+  read the chat ID from `https://api.telegram.org/bot<token>/getUpdates`. Failure alerts include
+  the latest mihomo warnings.
+- **Webhook**: every event is POSTed as JSON (`device`, `time`, `check`, `state`, `msg`, `dur`,
+  `text`).
+- **Logs**: the mihomo, Box for Root and Glovebox logs and the events are pushed with the Loki
+  push protocol, which Grafana Loki, VictoriaLogs and Grafana Alloy accept. The log files are the
+  buffer: lines count as sent only once the server accepted them, so whatever was logged without
+  coverage is sent later.
+
+Undelivered alerts and logs are retried with back-off, also after a restart or a power cut. The
+Device page shows the state of each channel and sends a test message on request.
+
+Box for Root lets the device's own traffic to private addresses bypass mihomo. To reach a server
+at home through the tailnet, set `report_proxy` to mihomo's mixed port and route the server's
+address in the mihomo rules:
+
+```sh
+echo '{"device_name":"router","report_proxy":"http://127.0.0.1:7890",
+  "telegram_token":"123456:ABC-DEF","telegram_chat":"42",
+  "log_push_url":"http://192.168.1.10:9428/insert/loki/api/v1/push"}' \
+  | su -c '/data/adb/modules/glovebox/bin/glovebox config import'
+```
+
+A VictoriaLogs server that keeps 30 days; its web UI is at `http://<host>:9428/select/vmui`,
+where `source:mihomo` shows the mihomo log and `source:events` the health events:
+
+```sh
+docker run -d --name victorialogs --restart unless-stopped -p 9428:9428 \
+  -v victorialogs:/vlogs victoriametrics/victoria-logs:v1.53.0 \
+  -storageDataPath=/vlogs -retentionPeriod=30d
+```
 
 ## How it works
 
@@ -129,7 +186,8 @@ module upgrades and uninstalls.
                            ├─ vendor web API   192.168.0.1:8080  (signal, SIM, usage, clients, Wi-Fi)
                            ├─ mihomo REST API   127.0.0.1:9091   (groups, nodes, providers, connections)
                            ├─ /proc, /sys                       (rates, CPU, memory, battery, thermal)
-                           └─ shell                              (box.service, logcat, reboot, date)
+                           ├─ shell                              (box.service, logcat, reboot, date)
+                           └─ report_proxy ──▶ Telegram, webhook, Loki push (alerts, logs)
 ```
 
 The vendor login hash is read from the vendor database instead of storing the admin password; a

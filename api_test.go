@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -89,10 +90,39 @@ func TestAPIAuthAndErrors(t *testing.T) {
 		}
 	}
 
+	// the demo reports to an in-process fake Telegram and Loki
+	if code, out := c.do("POST", "/api/report/test", `{}`, true); code != http.StatusOK || fmt.Sprint(out["sent"]) != "[logs telegram]" {
+		t.Errorf("report test: %d %v", code, out)
+	}
+	code, hl := c.do("GET", "/api/health", "", false)
+	checks, _ := hl["checks"].([]any)
+	events, _ := hl["events"].([]any)
+	if code != http.StatusOK || len(checks) != len(healthChecks) || len(events) == 0 {
+		t.Fatalf("health: %d %v", code, hl)
+	}
+	if h, _ := st["health"].(map[string]any); h == nil || h["seq"] != float64(len(events)) {
+		t.Fatalf("status health: %v", st["health"])
+	}
+
 	if code, out := c.do("POST", "/api/proxies/mode", `{"mode":"global"}`, true); code != http.StatusOK {
 		t.Fatalf("set mode: %d %v", code, out)
 	}
 	if _, px := c.do("GET", "/api/proxies", "", false); px["mode"] != "global" {
 		t.Fatalf("mode not applied: %v", px["mode"])
+	}
+}
+
+func TestReportTestWithoutChannels(t *testing.T) {
+	s, err := newDemoServer(t.Context(), t.TempDir(), "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.cfg.c.TelegramToken, s.cfg.c.LogPushURL = "", ""
+	rec := httptest.NewRecorder()
+	s.handleReportTest(rec, httptest.NewRequest("POST", "/api/report/test", nil))
+	var out map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &out)
+	if rec.Code != http.StatusBadRequest || out["code"] != "report_off" {
+		t.Fatalf("%d %v", rec.Code, out)
 	}
 }

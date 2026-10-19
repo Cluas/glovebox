@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -53,6 +54,26 @@ type Config struct {
 	// name prefixes of cellular WAN interfaces
 	WANPrefixes []string `json:"wan_prefixes"`
 	LANDev      string   `json:"lan_dev"`
+
+	// health checks and reporting (health.go, notify.go, ship.go). DeviceName titles alerts and is
+	// the "host" label of shipped logs
+	DeviceName string `json:"device_name"`
+	// HTTP or SOCKS5 proxy for every outbound report, e.g. mihomo's mixed port: Box lets the
+	// device's own traffic to private networks bypass mihomo, so a home server is only reachable
+	// through an explicit proxy
+	ReportProxy string `json:"report_proxy"`
+	// language of alert messages, one of the web/i18n locales
+	ReportLang string `json:"report_lang"`
+	// Telegram alerts, enabled when both are set
+	TelegramToken string `json:"telegram_token"`
+	TelegramChat  string `json:"telegram_chat"`
+	// every health event is POSTed here as JSON
+	WebhookURL string `json:"webhook_url"`
+	// Loki push endpoint (Grafana Loki, VictoriaLogs, Grafana Alloy); user:password in the URL is
+	// sent as basic auth
+	LogPushURL string `json:"log_push_url"`
+	// mihomo DNS listener queried by the dns check; empty skips the listener part of the check
+	DNSProbe string `json:"dns_probe"`
 }
 
 func defaultConfig() Config {
@@ -71,11 +92,19 @@ func defaultConfig() Config {
 		DelayURL:    "https://www.gstatic.com/generate_204",
 		WANPrefixes: []string{"sipa_eth", "rmnet", "ccmni"},
 		LANDev:      "br0",
+		DeviceName:  "glovebox",
+		ReportLang:  "en",
+		// Box for Root redirects DNS to mihomo on this port
+		DNSProbe: "127.0.0.1:1053",
 	}
 }
 
 func (c Config) tailscaleEnabled() bool {
 	return c.TailscaleProxy != "" && c.TailscaleProbe != ""
+}
+
+func (c Config) telegramEnabled() bool {
+	return c.TelegramToken != "" && c.TelegramChat != ""
 }
 
 type configStore struct {
@@ -169,6 +198,16 @@ func (c Config) redacted() Config {
 	}
 	if c.SessionSecret != "" {
 		c.SessionSecret = "(set)"
+	}
+	if c.TelegramToken != "" {
+		c.TelegramToken = "(set)"
+	}
+	// webhook URLs usually carry their secret in the path or query
+	if c.WebhookURL != "" {
+		c.WebhookURL = "(set)"
+	}
+	if u, err := url.Parse(c.LogPushURL); err == nil && u.User != nil {
+		c.LogPushURL = u.Redacted()
 	}
 	return c
 }

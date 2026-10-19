@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"math/rand/v2"
@@ -37,6 +38,15 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 	}
 	mh := newFakeMihomo()
 	mhAddr, err := serveLocal(ctx, mh)
+	if err != nil {
+		return nil, err
+	}
+	// stands in for the Telegram Bot API and a Loki server
+	sinkAddr, err := serveLocal(ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"ok":true}`)
+	}))
 	if err != nil {
 		return nil, err
 	}
@@ -70,9 +80,15 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 	c.BoxDir = box
 	c.TailscaleProxy = "Tailscale"
 	c.TailscaleProbe = "http://100.100.100.100/"
+	// there is no DNS listener to ask; the check only queries the fake mihomo
+	c.DNSProbe = ""
+	c.DeviceName = "demo"
+	c.TelegramToken, c.TelegramChat = "demo", "demo"
+	c.LogPushURL = "http://" + sinkAddr + "/insert/loki/api/v1/push"
 	cs := &configStore{c: c}
 
-	s := newServer(cs, dir)
+	s := newServer(cs, dir, dir)
+	s.notify.telegramAPI = "http://" + sinkAddr
 	s.demo = true
 	s.net.synth = true
 	start := time.Now()
@@ -85,7 +101,31 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 		rsrp, sinr := demoSignal(float64(-5 * i))
 		s.sigHist = append(s.sigHist, sigSample{&rsrp, &sinr})
 	}
+	demoEvents(s.events, start)
 	return s, nil
+}
+
+// demoEvents is the history of a drive: a cold start with the clock fixed by the network, a
+// proxy outage in a tunnel, and a short Tailscale failure
+func demoEvents(l *eventLog, now time.Time) {
+	boot := now.Add(-3*time.Hour - 17*time.Minute)
+	warn := func(at time.Time, msg string) string {
+		return fmt.Sprintf("time=%q level=warning msg=%q", at.Format(time.RFC3339Nano), msg)
+	}
+	ago := func(d time.Duration) time.Time { return now.Add(-d) }
+	for _, e := range []event{
+		{Time: boot, Check: "started", State: "info", Msg: version, Dur: 41},
+		{Time: boot.Add(38 * time.Second), Check: "clock_fixed", State: "info", Dur: 54_903_211},
+		{Time: ago(2*time.Hour + 4*time.Minute), Check: "tailscale", State: "fail", Msg: "Timeout"},
+		{Time: ago(2*time.Hour + time.Minute), Check: "tailscale", State: "ok", Dur: 180},
+		{Time: ago(47 * time.Minute), Check: "proxy", State: "fail", Msg: "Proxy: Timeout", Log: []string{
+			warn(ago(48*time.Minute), "[TCP] dial Proxy (match Match/) 192.168.0.143:51734 --> www.youtube.com:443 error: i/o timeout"),
+			warn(ago(47*time.Minute+30*time.Second), "[UDP] dial Proxy (match Match/) 192.168.0.143:50012 --> 142.250.72.14:443 error: i/o timeout"),
+		}},
+		{Time: ago(44 * time.Minute), Check: "proxy", State: "ok", Dur: 190},
+	} {
+		l.add(e)
+	}
 }
 
 func serveLocal(ctx context.Context, h http.Handler) (string, error) {
@@ -587,6 +627,9 @@ func (m *fakeMihomo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && parts[0] == "version":
 		reply(map[string]any{"meta": true, "version": "v1.19.32-demo"})
+	case r.Method == http.MethodGet && parts[0] == "dns" && len(parts) == 2 && parts[1] == "query":
+		// the health check asks for a random name, which does not exist
+		reply(map[string]any{"Status": 3, "Question": []any{map[string]any{"Name": r.URL.Query().Get("name") + ".", "Qtype": 1}}})
 	case parts[0] == "configs" && r.Method == http.MethodGet:
 		reply(map[string]any{"mode": m.mode, "tproxy-port": 9898})
 	case parts[0] == "configs" && r.Method == http.MethodPatch:

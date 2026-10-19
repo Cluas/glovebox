@@ -426,6 +426,12 @@ function renderChips(s) {
   chip('chip.proxy', p.running ? 'ok' : 'bad', p.running ? String(p.mode || '').toUpperCase() : 'DOWN');
   K['chip.ts'].hidden = !ts.enabled;
   if (ts.enabled) chip('chip.ts', ts.online ? 'ok' : ts.checked ? 'bad' : '', ts.online ? ts.delay + 'ms' : 'OFF');
+  const bad = s.health?.bad || [];
+  K['chip.alert'].hidden = !bad.length;
+  if (bad.length) {
+    chip('chip.alert', 'bad', String(bad.length));
+    K['chip.alert'].title = bad.map((n) => tEnum('hc', n)).join(', ');
+  }
   put('px.conns', p.running ? p.connections ?? 0 : '—');
 }
 
@@ -585,6 +591,7 @@ function renderOverview(s) {
   put('sys.firmware', s.firmware || '—');
 
   renderClients(s.client_list, 'clients.table', 'clients.count');
+  renderHealth();
 }
 
 function renderClients(list, tableKey, countKey) {
@@ -599,6 +606,107 @@ function renderClients(list, tableKey, countKey) {
       list.map((c) => `<tr><td>${esc(c.name || '—')}<span class="sub">${esc(c.mac)}</span></td><td>${esc(c.ip)}</td><td class="num"><span class="tag">${esc(c.via)}</span></td></tr>`).join('')}</tbody></table>`
     : `<p class="empty">${t('clients.none')}</p>`;
 }
+
+/* ---------- health ---------- */
+
+const H = { data: null, seq: -1, at: 0, busy: false };
+
+// loadHealth refetches /api/health when the status reports a new event, otherwise every 30 s
+async function loadHealth(force) {
+  const seq = S.status?.health?.seq ?? 0;
+  if (H.busy || (!force && H.data && seq === H.seq && Date.now() - H.at < 30000)) return;
+  H.busy = true;
+  try {
+    H.data = await api('/api/health');
+    H.seq = H.data.seq;
+    H.at = Date.now();
+  } catch (e) {
+    if (!(e instanceof AuthError) && !(e instanceof NetError)) console.warn(e);
+  } finally { H.busy = false; }
+  if (page === 'overview') renderHealth();
+  if (page === 'device') renderReport();
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+function fmtClock(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? '—' : `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+// devAgo is relTime for a time taken from the device clock, which may differ from this one
+function devAgo(iso) {
+  const ts = Date.parse(iso);
+  if (!ts || iso.startsWith('0001')) return '—';
+  const skew = S.status?.unix ? Date.now() - S.status.unix * 1000 : 0;
+  return relTime(new Date(ts + skew).toISOString());
+}
+
+function evText(e) {
+  const check = tEnum('hc', e.check);
+  if (e.state === 'fail') return t('alert.fail', { check });
+  if (e.state === 'ok') return t('alert.ok', { check, dur: fmtDur(e.dur) });
+  return t('ev.' + e.check, { msg: e.msg || '', dur: fmtDur(e.dur) });
+}
+
+function renderHealth() {
+  const d = H.data;
+  if (!d) return;
+  const checks = (d.checks || []).filter((c) => c.state !== 'off');
+  const bad = checks.filter((c) => c.state === 'fail');
+  put('hc.summary', bad.length ? t('hc.failing', { n: bad.length }) : t('hc.allOk'));
+  K['hc.summary'].className = 'tag ' + (bad.length ? 'bad' : 'ok');
+  const el = K['hc.events'];
+  // the relative times change every minute
+  const sig = JSON.stringify([checks, d.seq, lang, Math.floor(Date.now() / 60000)]);
+  if (el.dataset.sig === sig) return;
+  el.dataset.sig = sig;
+  const dot = { ok: 'ok', fail: 'bad', skip: 'warn' };
+  K['hc.checks'].innerHTML = checks.map((c) => {
+    const tip = c.state === 'fail' ? c.msg : c.state === 'skip' ? t('hc.skipped') : c.state ? '' : t('hc.waiting');
+    return `<li class="${esc(c.state || 'wait')}" title="${esc(tip)}"><i class="dot ${dot[c.state] || ''}"></i>${esc(tEnum('hc', c.name))}</li>`;
+  }).join('');
+  K['hc.errs'].innerHTML = bad.map((c) =>
+    `<p class="err small"><b>${esc(tEnum('hc', c.name))}</b> · ${esc(devAgo(c.since))} · ${esc(c.msg || '')}</p>`).join('');
+  const evs = (d.events || []).slice(0, 20);
+  const tag = { fail: 'bad', ok: 'ok' };
+  el.innerHTML = evs.length
+    ? `<table class="events"><thead><tr><th>${t('th.time')}</th><th>${t('th.event')}</th></tr></thead><tbody>${evs.map((e) =>
+      `<tr><td>${esc(fmtClock(e.time))}<span class="sub">${esc(devAgo(e.time))}</span></td><td><span class="tag ${tag[e.state] || ''}">${esc(String(e.state).toUpperCase())}</span> ${esc(evText(e))}${
+        e.state === 'fail' && e.msg ? `<span class="sub">${esc(e.msg)}</span>` : ''}</td></tr>`).join('')}</tbody></table>`
+    : `<p class="empty">${t('hc.none')}</p>`;
+}
+
+function renderReport() {
+  const rep = S.info?.report || {};
+  const on = rep.telegram || rep.webhook || rep.logs;
+  $('[data-report-test]').hidden = !on;
+  let html = `<p class="dim">${esc(t('rep.off'))}</p>`;
+  if (on) {
+    const ch = H.data?.channels || {};
+    const cell = (k, label) => {
+      if (!rep[k]) return `<div class="off"><dt>${label}</dt><dd>${t('rep.disabled')}</dd><dd class="sub">&nbsp;</dd></div>`;
+      const c = ch[k] || {};
+      const pend = !c.pending ? '' : k === 'logs' ? t('rep.behind', { size: fmtBytes(c.pending) }) : t('rep.queued', { n: c.pending });
+      const extra = [pend, c.dropped ? t('rep.dropped', { n: c.dropped }) : ''].filter(Boolean).join(' · ');
+      return `<div><dt>${label}</dt><dd><i class="dot ${c.error ? 'bad' : c.last_ok ? 'ok' : ''}"></i> ${
+        esc(c.last_ok ? t('rep.last', { t: devAgo(c.last_ok) }) : t('rep.never'))}</dd><dd class="sub">${esc(extra) || '&nbsp;'}</dd></div>`;
+    };
+    const errs = ['telegram', 'webhook', 'logs'].filter((k) => rep[k] && ch[k]?.error)
+      .map((k) => `<p class="err small">${k}: ${esc(ch[k].error)}</p>`).join('');
+    html = `<dl class="stats c3">${cell('telegram', 'TELEGRAM')}${cell('webhook', 'WEBHOOK')}${cell('logs', 'LOGS')}</dl>${errs}`;
+  }
+  const el = $('#report-body');
+  if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
+}
+
+document.addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-report-test]');
+  if (!b) return;
+  await busy(b, t('act.testing'), async () => {
+    const r = await api('/api/report/test', {}, { timeout: 40000 });
+    toast(t('rep.sent', { list: (r.sent || []).join(', ') }));
+  }).catch(fail);
+  loadHealth(true);
+});
 
 /* ---------- proxy ---------- */
 
@@ -771,6 +879,8 @@ async function loadDevice(first) {
   if (S.status) renderClients(S.status.client_list, 'clients.table2', 'clients.count2');
   if (!S.info) { try { S.info = await api('/api/info'); } catch { /* shown without HTTPS details */ } }
   renderSecure();
+  renderReport();
+  loadHealth(first);
   if (first || !wifiLoaded) {
     try { renderWiFi(await api('/api/wifi')); } catch (e) {
       if (e instanceof AuthError || e instanceof NetError) return;
@@ -1079,6 +1189,7 @@ async function statusTick() {
       renderStatusLine(s);
       if (page === 'overview') renderOverview(s);
       if (page === 'device') renderClients(s.client_list, 'clients.table2', 'clients.count2');
+      if (page === 'overview' || page === 'device') loadHealth();
       $('#crumb').parentElement.title = s.time || '';
     } catch (e) { if (!(e instanceof AuthError) && !(e instanceof NetError)) console.warn(e); }
   }
@@ -1147,6 +1258,8 @@ function renderAll() {
   if (logText || logMissing) renderLog();
   if (wifiLoaded) { wifiLoaded = false; if (page === 'device') loadDevice(true); }
   renderSecure();
+  renderHealth();
+  renderReport();
 }
 
 /* ---------- login and boot ---------- */

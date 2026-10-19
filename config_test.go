@@ -66,8 +66,17 @@ func TestConfigImport(t *testing.T) {
 }
 
 func TestRedacted(t *testing.T) {
-	c := Config{PasswordHash: "h", SessionSecret: "s"}.redacted()
-	if c.PasswordHash == "h" || c.SessionSecret == "s" {
-		t.Fatal("secrets not masked")
+	c := Config{
+		PasswordHash: "h", SessionSecret: "s", TelegramToken: "123:tok", TelegramChat: "42",
+		WebhookURL: "https://hooks.example/abc?key=k", LogPushURL: "http://user:pw@logs.example:9428/insert/loki/api/v1/push",
+	}.redacted()
+	b, _ := json.Marshal(c)
+	for _, secret := range []string{`"h"`, `"s"`, "123:tok", "abc", "key=k", ":pw@"} {
+		if strings.Contains(string(b), secret) {
+			t.Errorf("%s not masked: %s", secret, b)
+		}
+	}
+	if c.TelegramChat != "42" || !strings.Contains(c.LogPushURL, "user:xxxxx@logs.example:9428") {
+		t.Fatalf("masked too much: %+v", c)
 	}
 }

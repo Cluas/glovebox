@@ -95,6 +95,11 @@ func cellSignal(z map[string]any) (rsrp, sinr string) {
 	return
 }
 
+// pppConnected reads the vendor ppp_status: ppp_connected, ipv6_connected, ipv4_ipv6_connected, ...
+func pppConnected(ppp string) bool {
+	return strings.Contains(ppp, "connected") && !strings.Contains(ppp, "disconnected")
+}
+
 // netLabel maps the vendor network_type to a display generation or a code the UI translates
 func netLabel(t string) string {
 	switch strings.ToUpper(t) {
@@ -194,7 +199,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			"rsrp":         rsrp,
 			"sinr":         sinr,
 			"band":         band,
-			"connected":    strings.Contains(ppp, "connected") && !strings.Contains(ppp, "disconnected"),
+			"connected":    pppConnected(ppp),
 			"ppp_status":   ppp,
 			"sim":          simState(str(z["modem_main_state"])),
 			"roaming":      str(z["simcard_roam"]),
@@ -247,6 +252,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	out["proxy"] = proxy
 	out["tailscale"] = s.ts.status()
+	out["health"] = map[string]any{"bad": s.health.bad(), "seq": s.events.lastSeq()}
 	out["errors"] = errs
 	writeJSON(w, http.StatusOK, out)
 }

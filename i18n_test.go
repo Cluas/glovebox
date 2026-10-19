@@ -70,6 +70,10 @@ func TestTranslationKeysExist(t *testing.T) {
 		for _, m := range regexp.MustCompile(`apiErr\("(\w+)"`).FindAllSubmatch(src, -1) {
 			used = append(used, "err."+string(m[1]))
 		}
+		// server-side text such as alerts: tr(lang, "alert.fail", ...)
+		for _, m := range regexp.MustCompile(`\btr\([^,()]+, "([\w.]+)"`).FindAllSubmatch(src, -1) {
+			used = append(used, string(m[1]))
+		}
 	}
 	for _, k := range slices.Compact(slices.Sorted(slices.Values(used))) {
 		if strings.HasSuffix(k, ".") {
@@ -84,13 +88,20 @@ func TestTranslationKeysExist(t *testing.T) {
 	}
 }
 
-// Every key in en.json must be used, either literally or through a dynamic prefix such as
-// t('err.' + code) or tEnum('sim', state).
+// Every key in en.json must be used by the UI or the server (alert text), either literally or
+// through a dynamic prefix such as t('err.' + code) or tEnum('sim', state).
 func TestNoUnusedKeys(t *testing.T) {
 	en := loadLocale(t, "en")
 	html, _ := fs.ReadFile(webFS, "web/index.html")
 	js, _ := fs.ReadFile(webFS, "web/app.js")
 	src := string(html) + string(js)
+	for _, f := range goSources(t) {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src += string(b)
+	}
 	var prefixes []string
 	for _, re := range []string{
 		`\bt\('([\w.]+\.)'\s*\+`,     // t('err.' + code)
@@ -109,7 +120,7 @@ func TestNoUnusedKeys(t *testing.T) {
 		quoted := strings.Contains(src, "'"+k+"'") || strings.Contains(src, `"`+k+`"`)
 		dynamic := slices.ContainsFunc(prefixes, func(p string) bool { return strings.HasPrefix(k, p) })
 		if !quoted && !dynamic {
-			t.Errorf("key %q is not used by the UI", k)
+			t.Errorf("key %q is not used", k)
 		}
 	}
 }

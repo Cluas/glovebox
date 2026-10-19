@@ -398,7 +398,8 @@ func tailFile(path string, maxBytes int64) (string, error) {
 			b = b[i+1:]
 		}
 	}
-	return string(b), nil
+	// a power cut while a log is being written can leave a run of NUL bytes in it
+	return string(bytes.ReplaceAll(b, []byte{0}, nil)), nil
 }
 
 // startDetached starts a process in its own session so it outlives the request (e.g. restarting Box)

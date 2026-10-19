@@ -93,7 +93,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	s := newServer(cs, logDir)
+	s := newServer(cs, filepath.Dir(*cfgPath), logDir)
 	if len(c.TLSListen) > 0 {
 		if cm, err := newCertManager(filepath.Join(filepath.Dir(*cfgPath), "tls"), c); err != nil {
 			log.Printf("HTTPS unavailable: %v", err)

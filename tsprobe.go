@@ -73,3 +73,10 @@ func (t *tsProbe) loop(ctx context.Context) {
 		}
 	}
 }
+
+// last returns the result of the latest probe; at is zero before the first one
+func (t *tsProbe) last() (at time.Time, online bool, err string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.at, t.online, t.err
+}

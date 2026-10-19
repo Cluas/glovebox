@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -22,6 +23,12 @@ type server struct {
 	ts     *tsProbe
 	certs  *certManager // nil when HTTPS is off
 	logDir string
+
+	// health checks and reporting
+	events *eventLog
+	health *health
+	notify *notifier
+	ship   *shipper
 	// demo mode: in-process fake ZTE / mihomo backends, synthetic system info,
 	// destructive actions are only logged
 	demo bool
@@ -40,10 +47,11 @@ type server struct {
 	capAt  time.Time
 }
 
-func newServer(cs *configStore, logDir string) *server {
+// newServer keeps its state files (events, report cursors) in dataDir; empty keeps them in memory
+func newServer(cs *configStore, dataDir, logDir string) *server {
 	c := cs.get()
 	mc := newMihomo(c.MihomoAPI, c.MihomoSecret)
-	return &server{
+	s := &server{
 		cfg:    cs,
 		auth:   &auth{cfg: cs},
 		zte:    newZTE(c.ZTEBase, c.ZTEDB),
@@ -53,6 +61,16 @@ func newServer(cs *configStore, logDir string) *server {
 		logDir: logDir,
 		sys:    readSysInfo,
 	}
+	eventsPath := ""
+	if dataDir != "" {
+		eventsPath = filepath.Join(dataDir, "events.jsonl")
+	}
+	s.events = openEventLog(eventsPath)
+	s.health = newHealth(s, s.events, dataDir)
+	out := &outbound{}
+	s.notify = newNotifier(cs, s.events, s.health, out, dataDir)
+	s.ship = newShipper(cs, s.events, s.health, out, dataDir, logDir)
+	return s
 }
 
 // run starts the samplers and the HTTP / HTTPS listeners until ctx is cancelled
@@ -61,6 +79,9 @@ func (s *server) run(ctx context.Context) error {
 	go s.net.loop(ctx)
 	go s.sigLoop(ctx)
 	go s.ts.loop(ctx)
+	go s.health.loop(ctx)
+	s.notify.loop(ctx)
+	go s.ship.loop(ctx)
 	go ensureAlias(ctx, c.AliasAddr, c.AliasDev)
 
 	h := s.routes()
@@ -158,6 +179,8 @@ func (s *server) routes() http.Handler {
 	authed("POST /api/device/time", s.handleSetTime)
 	authed("POST /api/console/password", s.handlePassword)
 	authed("GET /api/logs", s.handleLogs)
+	authed("GET /api/health", s.handleHealth)
+	authed("POST /api/report/test", s.handleReportTest)
 
 	mux.Handle("GET /", staticHandler())
 	return s.guard(mux)

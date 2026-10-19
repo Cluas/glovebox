@@ -89,6 +89,7 @@
       <span class="chip" data-k="chip.cell"><i class="dot"></i><span>CELL</span><b>—</b></span>
       <span class="chip" data-k="chip.proxy"><i class="dot"></i><span>PROXY</span><b>—</b></span>
       <span class="chip" data-k="chip.ts" hidden><i class="dot"></i><span>TAILNET</span><b>—</b></span>
+      <a class="chip" href="#overview" data-k="chip.alert" hidden><i class="dot bad"></i><span>ALERT</span><b>—</b></a>
     </div>
     <time class="clock" id="clock">--:--:--</time>
   </header>
@@ -211,6 +212,11 @@
           <header class="ph"><span class="pi">07</span><h2>CLIENTS</h2><span class="sub" data-i18n="p.clients">connected devices</span><div class="pa"><span class="tag" data-k="clients.count">0</span></div></header>
           <div class="pb flush"><div class="table-wrap" data-k="clients.table"></div></div>
         </article>
+        <article class="panel s12" id="health">
+          <header class="ph"><span class="pi">08</span><h2>HEALTH</h2><span class="sub" data-i18n="p.health">checks &amp; events</span><div class="pa"><span class="tag" data-k="hc.summary">—</span></div></header>
+          <div class="pb hc-checks"><ul class="checks" data-k="hc.checks"></ul><div data-k="hc.errs"></div></div>
+          <div class="pb flush"><div class="table-wrap" data-k="hc.events"></div></div>
+        </article>
       </div>
     </section>
 
@@ -244,6 +250,11 @@
         <article class="panel s12">
           <header class="ph"><span class="pi">◎</span><h2>CLIENTS</h2><span class="sub" data-i18n="p.clients">connected devices</span><div class="pa"><span class="tag" data-k="clients.count2">0</span></div></header>
           <div class="pb flush"><div class="table-wrap" data-k="clients.table2"></div></div>
+        </article>
+
+        <article class="panel s12" id="report">
+          <header class="ph"><span class="pi">✉</span><h2>REPORTING</h2><span class="sub" data-i18n="p.report">alerts &amp; log shipping</span><div class="pa"><button class="btn sm" data-report-test hidden><span data-i18n="rep.test">Send test</span></button></div></header>
+          <div class="pb" id="report-body"></div>
         </article>
 
         <article class="panel s6 m-full" id="secure">
