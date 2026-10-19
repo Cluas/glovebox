@@ -5,9 +5,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -180,6 +183,43 @@ func TestTelegramBatching(t *testing.T) {
 		t.Fatalf("huge event: used %d, %d characters", used, utf8.RuneCountInString(text))
 	}
 }
+
+// both channels save their cursors from their own goroutines
+func TestNotifySaveConcurrently(t *testing.T) {
+	dir := t.TempDir()
+	n, _ := newTestNotifier(t, dir, func(c *Config) { c.WebhookURL = "http://127.0.0.1:1/hook" })
+	var logged strings.Builder
+	var logMu sync.Mutex
+	log.SetOutput(writerFunc(func(b []byte) (int, error) {
+		logMu.Lock()
+		defer logMu.Unlock()
+		return logged.Write(b)
+	}))
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 20 {
+				n.save()
+			}
+		}()
+	}
+	wg.Wait()
+	if logged.Len() != 0 {
+		t.Fatalf("save logged: %s", logged.String())
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "notify.json"))
+	var m map[string]int64
+	if err != nil || json.Unmarshal(b, &m) != nil || len(m) != 2 {
+		t.Fatalf("notify.json %q, %v", b, err)
+	}
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(b []byte) (int, error) { return f(b) }
 
 func TestWebhook(t *testing.T) {
 	var mu sync.Mutex

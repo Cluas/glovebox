@@ -95,7 +95,8 @@ type notifier struct {
 	events *eventLog
 	health *health
 	out    *outbound
-	path   string // notify.json: the cursor of each channel
+	path   string     // notify.json: the cursor of each channel
+	saveMu sync.Mutex // the channels save from their own goroutines and share the temp file
 	chans  []*channel
 	// Bot API base URL; the demo and the tests point it at a fake server
 	telegramAPI string
@@ -143,6 +144,8 @@ func (n *notifier) save() {
 	if n.path == "" {
 		return
 	}
+	n.saveMu.Lock()
+	defer n.saveMu.Unlock()
 	m := map[string]int64{}
 	for _, ch := range n.chans {
 		ch.mu.Lock()
