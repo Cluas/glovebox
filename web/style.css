@@ -112,6 +112,10 @@ input[type=text], input[type=password], input[type=search], select {
   width: 100%; min-height: var(--ctl-h); padding: 0 12px; border: 1px solid var(--line-2); border-radius: 0;
   background: var(--bg); color: var(--fg); font: 400 1rem var(--mono); outline: none; transition: border-color .15s, box-shadow .15s;
 }
+/* iOS Safari zooms the page into any focused field whose text is smaller than 16px */
+@media (pointer: coarse) {
+  input[type=text], input[type=password], input[type=search], select { font-size: max(16px, 1rem); }
+}
 input:focus, select:focus { border-color: var(--a); box-shadow: 0 0 0 3px rgba(var(--a-rgb), .14); }
 input::placeholder { color: var(--fg-3); }
 select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--fg-2) 50%), linear-gradient(135deg, var(--fg-2) 50%, transparent 50%); background-position: right 16px center, right 11px center; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 30px; }
