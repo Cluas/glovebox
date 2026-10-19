@@ -189,7 +189,8 @@ func (sh *shipper) commit(st shipState, behind int64, pushed bool) {
 func (sh *shipper) fail(err error, unsent int64) {
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
-	if sh.err == "" {
+	// logged when the reason changes, not on every retry
+	if sh.err != err.Error() {
 		log.Printf("log shipping failing: %v", err)
 	}
 	sh.err, sh.pending = err.Error(), unsent

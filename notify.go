@@ -285,7 +285,8 @@ func (ch *channel) cursorValue() int64 {
 func (ch *channel) fail(err error) {
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
-	if ch.err == "" {
+	// logged when the reason changes, not on every retry
+	if ch.err != err.Error() {
 		log.Printf("%s alerts failing: %v", ch.name, err)
 	}
 	ch.err = err.Error()
