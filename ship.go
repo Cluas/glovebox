@@ -56,6 +56,7 @@ type shipper struct {
 	out     *outbound
 	path    string // ship.json
 	sources []shipSource
+	wake    chan struct{}
 
 	mu      sync.Mutex
 	st      shipState
@@ -70,8 +71,9 @@ func newShipper(cfg *configStore, events *eventLog, h *health, out *outbound, da
 		{"mihomo", filepath.Join(box, "run/clash.log")},
 		{"box", filepath.Join(box, "run/runs.log")},
 		{"glovebox", filepath.Join(logDir, logFileName)},
-	}}
+	}, wake: make(chan struct{}, 1)}
 	if dataDir != "" {
+		sh.sources = append(sh.sources, shipSource{"diag", filepath.Join(dataDir, diagLogFile)})
 		sh.path = filepath.Join(dataDir, "ship.json")
 		if b, err := os.ReadFile(sh.path); err == nil {
 			json.Unmarshal(b, &sh.st)
@@ -97,11 +99,23 @@ func (sh *shipper) loop(ctx context.Context) {
 		default:
 			backoff = 0
 		}
+		t := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
+			t.Stop()
 			return
-		case <-time.After(wait):
+		case <-t.C:
+		case <-sh.wake:
+			t.Stop()
 		}
+	}
+}
+
+// soon ships without waiting for the next round, e.g. the results of a diagnostics job
+func (sh *shipper) soon() {
+	select {
+	case sh.wake <- struct{}{}:
+	default:
 	}
 }
 
@@ -396,7 +410,12 @@ func logValues(data []byte, now time.Time) [][2]string {
 
 func lineTime(s string) (time.Time, bool) {
 	// mihomo: time="2026-10-20T14:02:31.123456+08:00" level=...
-	if rest, ok := strings.CutPrefix(s, `time="`); ok {
+	// diagnostics: {"time":"2026-10-20T14:02:31.123456+08:00",...
+	rest, ok := strings.CutPrefix(s, `time="`)
+	if !ok {
+		rest, ok = strings.CutPrefix(s, `{"time":"`)
+	}
+	if ok {
 		if i := strings.IndexByte(rest, '"'); i > 0 {
 			t, err := time.Parse(time.RFC3339Nano, rest[:i])
 			return t, err == nil

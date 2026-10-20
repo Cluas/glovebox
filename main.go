@@ -30,6 +30,7 @@ Commands:
   config import         merge JSON from stdin into the configuration file
   demo [-listen addr]   run without a device (fake backends, synthetic data), default 127.0.0.1:8080
   update keygen|sign    make a signing key, sign a module zip for remote upgrades (see README)
+  diag sign             sign a remote diagnostics job (see README)
   version               print the version
 
 Options:
@@ -59,6 +60,9 @@ func main() {
 		return
 	case "update":
 		exitOn(updateCmd(flag.Args()[1:]))
+		return
+	case "diag":
+		exitOn(diagCmd(flag.Args()[1:]))
 		return
 	case "update-guard": // started by an upgrade, see update.go
 		openLog(*cfgPath, *logPath)

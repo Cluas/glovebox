@@ -206,12 +206,13 @@ type mihomoConns struct {
 	UploadTotal   int64 `json:"uploadTotal"`
 	Connections   []struct {
 		Metadata struct {
-			Network   string `json:"network"`
-			SourceIP  string `json:"sourceIP"`
-			Host      string `json:"host"`
-			DestIP    string `json:"destinationIP"`
-			DestPort  string `json:"destinationPort"`
-			SniffHost string `json:"sniffHost"`
+			Network    string `json:"network"`
+			SourceIP   string `json:"sourceIP"`
+			SourcePort string `json:"sourcePort"`
+			Host       string `json:"host"`
+			DestIP     string `json:"destinationIP"`
+			DestPort   string `json:"destinationPort"`
+			SniffHost  string `json:"sniffHost"`
 		} `json:"metadata"`
 		Upload   int64     `json:"upload"`
 		Download int64     `json:"download"`
@@ -236,9 +237,22 @@ func (m *mihomoClient) closeConnections(ctx context.Context) error {
 // dnsQuery resolves name through mihomo's resolver (the configured nameservers, not fake-ip) and
 // returns the DNS response code: 0 NOERROR, 2 SERVFAIL, 3 NXDOMAIN
 func (m *mihomoClient) dnsQuery(ctx context.Context, name, qtype string) (int, error) {
+	rcode, _, err := m.dnsLookup(ctx, name, qtype)
+	return rcode, err
+}
+
+// dnsLookup is dnsQuery with the answers, as their text form
+func (m *mihomoClient) dnsLookup(ctx context.Context, name, qtype string) (int, []string, error) {
 	var v struct {
 		Status int `json:"Status"`
+		Answer []struct {
+			Data string `json:"data"`
+		} `json:"Answer"`
 	}
 	err := m.call(ctx, http.MethodGet, "/dns/query?"+url.Values{"name": {name}, "type": {qtype}}.Encode(), nil, &v)
-	return v.Status, err
+	var answers []string
+	for _, a := range v.Answer {
+		answers = append(answers, a.Data)
+	}
+	return v.Status, answers, err
 }

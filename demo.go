@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -45,6 +46,12 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 	if err != nil {
 		return nil, err
 	}
+	mixedAddr, err := serveLocal(ctx, http.HandlerFunc(mh.proxyHTTP))
+	if err != nil {
+		return nil, err
+	}
+	_, mixedPort, _ := net.SplitHostPort(mixedAddr)
+	mh.mixedPort, _ = strconv.Atoi(mixedPort)
 	// stands in for the Telegram Bot API and a Loki server
 	sinkAddr, err := serveLocal(ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.Copy(io.Discard, r.Body)
@@ -89,7 +96,7 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 	c.DeviceName = "demo"
 	c.TelegramToken, c.TelegramChat = "demo", "demo"
 	c.LogPushURL = "http://" + sinkAddr + "/insert/loki/api/v1/push"
-	rel, err := newFakeRelease(time.Now())
+	rel, err := newFakeRelease(time.Now(), c.DeviceName)
 	if err != nil {
 		return nil, err
 	}
@@ -120,18 +127,45 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 	demoEvents(s.events, start)
 	// the update panel starts out with a newer version found
 	s.update.check(ctx)
+	// and the diagnostics panel with the results of a job, once the health checks ran
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-time.After(3 * time.Second):
+			s.diag.poll(ctx, cs.get())
+		}
+	}()
 	return s, nil
 }
 
-// fakeRelease serves a signed update.json and module zip, newer than any dev build
+// fakeRelease serves a signed update.json and module zip, newer than any dev build, and a
+// diagnostics job for device
 type fakeRelease struct {
 	pub      ed25519.PublicKey
 	manifest []byte
 	zip      []byte
 	zipName  string
+	diag     []byte
+	diagPath string
+	diagAt   time.Time
 }
 
-func newFakeRelease(now time.Time) (*fakeRelease, error) {
+// demoDiagProbes is the job the demo runs: what the YouTube sign-in needs, with an upstream that
+// fails HTTPS records
+var demoDiagProbes = []diagProbe{
+	{Kind: "dns", Name: "accounts.google.com"},
+	{Kind: "dns", Name: "accounts.google.com", Type: "AAAA"},
+	{Kind: "dns", Name: "accounts.google.com", Type: "HTTPS"},
+	{Kind: "http", URL: "http://accounts.google.com/", Follow: true},
+	{Kind: "http", URL: "http://www.youtube.com/generate_204"},
+	{Kind: "delay", Proxy: "Proxy"},
+	{Kind: "proxies"},
+	{Kind: "connections", Match: "youtube"},
+	{Kind: "health"},
+	{Kind: "log", Level: "info", Minutes: 10},
+}
+
+func newFakeRelease(now time.Time, device string) (*fakeRelease, error) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		return nil, err
@@ -158,7 +192,15 @@ func newFakeRelease(now time.Time) (*fakeRelease, error) {
 	m := manifest{Version: ver, VersionCode: code, ZipURL: r.zipName, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(r.zip)),
 		Notes: "Demo release: faster proxy page, clearer health alerts."}
 	m.Sig = base64.StdEncoding.EncodeToString(ed25519.Sign(priv, m.signedText()))
-	r.manifest, err = json.Marshal(m)
+	if r.manifest, err = json.Marshal(m); err != nil {
+		return nil, err
+	}
+	j, err := signDiag(priv, "demo-"+now.Format("20060102-1504")+"-youtube", device, 12*time.Hour, demoDiagProbes, now)
+	if err != nil {
+		return nil, err
+	}
+	r.diagPath, r.diagAt = "/diag/"+device+".json", now.Truncate(time.Second)
+	r.diag, err = json.Marshal(j)
 	return r, err
 }
 
@@ -170,6 +212,9 @@ func (r *fakeRelease) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case "/" + r.zipName:
 		w.Header().Set("Content-Type", "application/zip")
 		w.Write(r.zip)
+	case r.diagPath:
+		w.Header().Set("Content-Type", "application/json")
+		http.ServeContent(w, req, "", r.diagAt, bytes.NewReader(r.diag))
 	default:
 		http.NotFound(w, req)
 	}
@@ -498,10 +543,10 @@ type fakeGroup struct {
 }
 
 type fakeConn struct {
-	host, src, network, port, rule, payload string
-	chains                                  []string
-	up, down                                int64
-	start                                   time.Time
+	host, src, srcPort, network, port, rule, payload string
+	chains                                           []string
+	up, down                                         int64
+	start                                            time.Time
 }
 
 type fakeMihomo struct {
@@ -514,6 +559,10 @@ type fakeMihomo struct {
 	updated map[string]time.Time
 	conns   []fakeConn
 	closed  time.Time
+	// mixed port: the diagnostics probes' requests, by source port
+	mixedPort int
+	proxied   map[string]fakeConn
+	logLevel  string
 }
 
 func newFakeMihomo() *fakeMihomo {
@@ -532,9 +581,11 @@ func newFakeMihomo() *fakeMihomo {
 			{"Tailnet", "Selector", []string{"Tailscale", "DIRECT"}},
 			{"Final", "Selector", []string{"Proxy", "DIRECT"}},
 		},
-		now:     map[string]string{"Proxy": "Auto", "Auto": "HK 01", "Streaming": "JP 01", "AI": "US 01", "Tailnet": "Tailscale", "Final": "Proxy"},
-		delays:  map[string]int{},
-		updated: map[string]time.Time{},
+		now:      map[string]string{"Proxy": "Auto", "Auto": "HK 01", "Streaming": "JP 01", "AI": "US 01", "Tailnet": "Tailscale", "Final": "Proxy"},
+		delays:   map[string]int{},
+		updated:  map[string]time.Time{},
+		proxied:  map[string]fakeConn{},
+		logLevel: "warning",
 	}
 	for _, n := range demoNodes {
 		m.delays[n.name] = n.base + rand.IntN(30)
@@ -632,14 +683,21 @@ func (m *fakeMihomo) connsJSON() map[string]any {
 		m.conns = demoConns()
 	}
 	var l []map[string]any
-	for i := range m.conns {
-		c := &m.conns[i]
-		c.down += int64(rand.IntN(400_000))
-		c.up += int64(rand.IntN(30_000))
+	conns := slices.Clone(m.conns)
+	for _, c := range m.proxied {
+		conns = append(conns, c)
+	}
+	for i := range conns {
+		c := &conns[i]
+		if i < len(m.conns) {
+			c = &m.conns[i]
+			c.down += int64(rand.IntN(400_000))
+			c.up += int64(rand.IntN(30_000))
+		}
 		l = append(l, map[string]any{
 			"metadata": map[string]any{
-				"network": c.network, "sourceIP": c.src, "host": c.host, "destinationIP": "203.0.113." + strconv.Itoa(10+i),
-				"destinationPort": c.port, "sniffHost": "",
+				"network": c.network, "sourceIP": c.src, "sourcePort": c.srcPort, "host": c.host,
+				"destinationIP": "203.0.113." + strconv.Itoa(10+i), "destinationPort": c.port, "sniffHost": "",
 			},
 			"upload": c.up, "download": c.down, "start": c.start.Format(time.RFC3339Nano),
 			"chains": c.chains, "rule": c.rule, "rulePayload": c.payload,
@@ -675,7 +733,8 @@ func demoConns() []fakeConn {
 	var out []fakeConn
 	for i, s := range specs {
 		out = append(out, fakeConn{
-			host: s.host, src: str(demoStations[i%len(demoStations)]["ip_addr"]), network: s.network, port: s.port,
+			host: s.host, src: str(demoStations[i%len(demoStations)]["ip_addr"]), srcPort: strconv.Itoa(40000 + rand.IntN(20000)),
+			network: s.network, port: s.port,
 			rule: s.rule, payload: s.payload, chains: s.chains,
 			up: int64(rand.IntN(2_000_000)), down: int64(rand.IntN(80_000_000)),
 			start: time.Now().Add(-time.Duration(rand.IntN(1800)) * time.Second),
@@ -721,15 +780,20 @@ func (m *fakeMihomo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && parts[0] == "version":
 		reply(map[string]any{"meta": true, "version": "v1.19.32-demo"})
 	case r.Method == http.MethodGet && parts[0] == "dns" && len(parts) == 2 && parts[1] == "query":
-		// the health check asks for a random name, which does not exist
-		reply(map[string]any{"Status": 3, "Question": []any{map[string]any{"Name": r.URL.Query().Get("name") + ".", "Qtype": 1}}})
+		reply(fakeDNSAnswer(r.URL.Query().Get("name"), r.URL.Query().Get("type")))
 	case parts[0] == "configs" && r.Method == http.MethodGet:
-		reply(map[string]any{"mode": m.mode, "tproxy-port": 9898})
+		reply(map[string]any{"mode": m.mode, "tproxy-port": 9898, "mixed-port": m.mixedPort, "log-level": m.logLevel})
 	case parts[0] == "configs" && r.Method == http.MethodPatch:
-		var in struct{ Mode string }
+		var in struct {
+			Mode     string
+			LogLevel string `json:"log-level"`
+		}
 		json.NewDecoder(r.Body).Decode(&in)
 		if in.Mode != "" {
 			m.mode = in.Mode
+		}
+		if in.LogLevel != "" {
+			m.logLevel = in.LogLevel
 		}
 		w.WriteHeader(http.StatusNoContent)
 	case parts[0] == "proxies" && len(parts) == 1:
@@ -781,6 +845,57 @@ func (m *fakeMihomo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		fail(http.StatusNotFound, "resource not found")
+	}
+}
+
+// fakeDNSAnswer resolves every name but the random ones the health check asks for; HTTPS records
+// fail as with an upstream that does not know the type
+func fakeDNSAnswer(name, qtype string) map[string]any {
+	q := []any{map[string]any{"Name": name + ".", "Qtype": 1}}
+	switch {
+	case strings.HasPrefix(name, "glovebox-"):
+		return map[string]any{"Status": 3, "Question": q}
+	case qtype == "HTTPS":
+		return map[string]any{"Status": 2, "Question": q}
+	}
+	var ans []any
+	if qtype == "" || qtype == "A" {
+		h := 0
+		for _, c := range name {
+			h = (h*31 + int(c)) % 200
+		}
+		ans = append(ans, map[string]any{"name": name + ".", "type": 1, "TTL": 300, "data": "203.0.113." + strconv.Itoa(20+h%200)})
+	}
+	return map[string]any{"Status": 0, "Question": q, "Answer": ans}
+}
+
+// proxyHTTP stands in for mihomo's mixed port: plain http requests get a canned answer, and the
+// connection shows in /connections like a real one
+func (m *fakeMihomo) proxyHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodConnect || r.URL.Host == "" {
+		http.Error(w, "demo proxy: plain http only", http.StatusBadGateway)
+		return
+	}
+	_, port, _ := net.SplitHostPort(r.RemoteAddr)
+	m.mu.Lock()
+	m.proxied[port] = fakeConn{host: r.URL.Hostname(), src: "127.0.0.1", srcPort: port, network: "tcp", port: "80",
+		rule: "RuleSet", payload: "proxy-domains", chains: []string{"HK 01", "Auto", "Proxy"}, start: time.Now()}
+	m.mu.Unlock()
+	time.AfterFunc(5*time.Second, func() {
+		m.mu.Lock()
+		delete(m.proxied, port)
+		m.mu.Unlock()
+	})
+	w.Header().Set("Server", "demo")
+	switch r.URL.Path {
+	case "/generate_204":
+		w.WriteHeader(http.StatusNoContent)
+	case "/":
+		w.Header().Set("Location", "http://"+r.URL.Host+"/ServiceLogin")
+		w.WriteHeader(http.StatusFound)
+	default:
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		io.WriteString(w, "<!doctype html><title>Sign in</title>")
 	}
 }
 

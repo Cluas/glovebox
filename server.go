@@ -30,6 +30,7 @@ type server struct {
 	notify *notifier
 	ship   *shipper
 	update *updater
+	diag   *diagnoser
 	// demo mode: in-process fake ZTE / mihomo backends, synthetic system info,
 	// destructive actions are only logged
 	demo bool
@@ -72,6 +73,8 @@ func newServer(cs *configStore, dataDir, logDir string) *server {
 	s.notify = newNotifier(cs, s.events, s.health, out, dataDir)
 	s.ship = newShipper(cs, s.events, s.health, out, dataDir, logDir)
 	s.update = newUpdater(cs, s.events, s.health, out, dataDir)
+	s.diag = newDiagnoser(cs, s.health, mc, out, s.update.keys, dataDir)
+	s.diag.shipNow = s.ship.soon
 	return s
 }
 
@@ -125,6 +128,7 @@ func (s *server) run(ctx context.Context) error {
 	}
 	// started once the listeners are up: a new version confirms itself by staying up from here
 	go s.update.loop(ctx)
+	go s.diag.loop(ctx)
 	select {
 	case <-ctx.Done():
 	case err := <-errc:
@@ -189,6 +193,7 @@ func (s *server) routes() http.Handler {
 	authed("GET /api/update", s.handleUpdate)
 	authed("POST /api/update/check", s.handleUpdateCheck)
 	authed("POST /api/update/install", s.handleUpdateInstall)
+	authed("GET /api/diag", s.handleDiag)
 
 	mux.Handle("GET /", staticHandler())
 	return s.guard(mux)

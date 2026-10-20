@@ -84,6 +84,12 @@ type Config struct {
 	UpdateInterval string `json:"update_interval"`
 	// ed25519 public keys (base64) trusted besides the built-in ones, for self-built releases
 	UpdatePubkeys []string `json:"update_pubkeys"`
+
+	// remote diagnostics (diag.go): the signed job to poll, empty disables; auto is
+	// diag/<device_name>.json next to a self-hosted update_url, and off for releases on GitHub
+	DiagURL string `json:"diag_url"`
+	// how often to poll, a Go duration of at least 15s; after a job it polls every 15s for 10m
+	DiagInterval string `json:"diag_interval"`
 }
 
 func defaultConfig() Config {
@@ -109,6 +115,8 @@ func defaultConfig() Config {
 		UpdateURL:      defaultUpdateURL,
 		UpdateMode:     "auto",
 		UpdateInterval: "1h",
+		DiagURL:        "auto",
+		DiagInterval:   "1m",
 	}
 }
 
