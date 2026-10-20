@@ -107,6 +107,8 @@
 [data-skin="material"] .upd-notes { border-left: 0; border-radius: 12px; background: var(--bg-3); }
 [data-skin="material"] :is(.upd-bar, .upd-bar i) { border-radius: 999px; }
 [data-skin="material"] .upd-bar { background: var(--sec-c); }
+[data-skin="material"] .diag-job { border-top-style: solid; border-top-color: var(--line); }
+[data-skin="material"] .diag-res li { border-bottom-color: var(--line); }
 
 [data-skin="material"] .kpi .ph .pi { display: inline-flex; color: var(--a); min-width: 0; }
 [data-skin="material"] .kpi.alt .ph .pi { color: var(--b); }

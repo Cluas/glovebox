@@ -529,6 +529,25 @@ td .sub { display: block; color: var(--fg-2); font-size: .76rem; }
 .upd-bar i { display: block; height: 100%; background: var(--a); box-shadow: 0 0 calc(6px * var(--glow)) var(--a); transition: width .4s ease; }
 .upd-bar.busy i { width: 30% !important; animation: upd-slide 1.2s ease-in-out infinite; }
 @keyframes upd-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.diag-job { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line-2); }
+.diag-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 8px; }
+.diag-head b { overflow-wrap: anywhere; }
+.diag-res { margin: 0; padding: 0; list-style: none; font-size: .82rem; }
+.diag-res li { display: grid; grid-template-columns: auto 100px 1fr auto; align-items: baseline; gap: 4px 10px; padding: 5px 0; border-bottom: 1px solid var(--line-2); }
+.diag-res li:last-child { border-bottom: 0; }
+.diag-res .dot { align-self: center; }
+.diag-res .tag { justify-content: center; }
+.diag-res .msg { min-width: 0; font-family: var(--mono); color: var(--fg-1); overflow-wrap: anywhere; }
+.diag-res .ms { color: var(--fg-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.diag-res li.fail .msg { color: var(--bad); }
+.diag-res li.sub { display: block; padding: 2px 0 2px 127px; border-bottom: 0; font-size: .76rem; }
+.diag-res li.sub .msg { color: var(--fg-2); }
+@media (max-width: 640px) {
+  .diag-res li { grid-template-columns: auto auto 1fr; }
+  .diag-res .msg { grid-column: 1 / -1; }
+  .diag-res .ms { grid-row: 1; grid-column: 3; justify-self: end; }
+  .diag-res li.sub { padding-left: 12px; }
+}
 .upd-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--a); box-shadow: 0 0 calc(8px * var(--glow)) rgba(var(--a-rgb), .8); vertical-align: 1px; }
 .upd-dot[hidden] { display: none; }
 

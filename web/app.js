@@ -921,6 +921,7 @@ async function loadDevice(first) {
   renderReport();
   loadHealth(first);
   if (first || !upd) loadUpdate();
+  loadDiag(first);
   if (first || !wifiLoaded) {
     try { renderWiFi(await api('/api/wifi')); } catch (e) {
       if (e instanceof AuthError || e instanceof NetError) return;
@@ -1171,6 +1172,66 @@ function renderUpdate() {
   }
   const html = parts.join('');
   const el = $('#update-body');
+  if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
+}
+
+/* ---------- remote diagnostics ---------- */
+
+let diag = null;
+let diagAt = 0;
+// connection lines shown per job; the rest are counted
+const DIAG_CONNS = 30;
+
+async function loadDiag(force) {
+  if (!force && Date.now() - diagAt < 10000) return;
+  diagAt = Date.now();
+  try {
+    diag = await api('/api/diag');
+  } catch (e) {
+    if (!(e instanceof AuthError) && !(e instanceof NetError)) $('#diag-body').innerHTML = `<p class="err">[ERR] ${esc(e.message)}</p>`;
+    return;
+  }
+  renderDiag();
+}
+
+function renderDiag() {
+  const d = diag;
+  if (!d) return;
+  const kv = (k, v) => `<dt>${esc(t(k))}</dt><dd>${v}</dd>`;
+  const parts = [];
+  if (d.enabled) {
+    const rows = [kv('diag.source', esc(d.source)),
+      kv('diag.polled', esc(`${d.polled_at ? devAgo(d.polled_at) : t('ts.never')} · ${t('upd.every', { d: d.interval })}`))];
+    if (d.log_level) rows.push(kv('diag.log', esc(t('diag.logUntil', { level: d.log_level, t: fmtClock(d.log_until).slice(6, 11) }))));
+    parts.push(`<dl class="kv">${rows.join('')}</dl>`);
+    if (d.error) parts.push(`<p class="err small">${esc(d.error)}</p>`);
+    if (d.running) parts.push(`<p class="small">${esc(t('diag.running', { id: d.running }))}…</p>`);
+  } else {
+    parts.push(`<p class="dim">${esc(t('diag.off'))}</p>`);
+  }
+  const j = d.last;
+  if (j) {
+    const items = [];
+    let conns = 0;
+    let hidden = 0;
+    for (const r of j.results || []) {
+      if (r.kind === 'job') continue;
+      if (r.kind === 'connection') {
+        if (++conns > DIAG_CONNS) { hidden++; continue; }
+        items.push(`<li class="sub"><span class="msg">${esc(r._msg)}</span></li>`);
+        continue;
+      }
+      conns = 0;
+      items.push(`<li${r.ok ? '' : ' class="fail"'}><i class="dot ${r.ok ? 'ok' : 'bad'}"></i><span class="tag">${esc(r.kind)}</span><span class="msg">${esc(r._msg)}</span><span class="ms">${esc(String(r.ms))} ms</span></li>`);
+    }
+    if (hidden) items.push(`<li class="sub dim">${esc(t('diag.moreConns', { n: hidden }))}</li>`);
+    const sum = t('diag.summary', { ok: j.ok, failed: j.failed, s: (j.ms / 1000).toFixed(1), t: devAgo(j.at) });
+    parts.push(`<div class="diag-job"><p class="diag-head"><b>${esc(j.id)}</b><span class="${j.failed ? 'err' : 'dim'} small">${esc(sum)}</span></p><ol class="diag-res">${items.join('')}</ol></div>`);
+  } else if (d.enabled) {
+    parts.push(`<p class="dim small">${esc(t('diag.none'))}</p>`);
+  }
+  const html = parts.join('');
+  const el = $('#diag-body');
   if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
 }
 
@@ -1525,6 +1586,7 @@ async function statusTick() {
       if (page === 'overview') renderOverview(s);
       if (page === 'device') renderClients(s.client_list, 'clients.table2', 'clients.count2');
       if (page === 'overview' || page === 'device') loadHealth();
+      if (page === 'device') loadDiag();
       $('#crumb').parentElement.title = s.time || '';
     } catch (e) { if (!(e instanceof AuthError) && !(e instanceof NetError)) console.warn(e); }
   }

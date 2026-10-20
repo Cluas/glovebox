@@ -26,7 +26,7 @@
 | --- | --- |
 | 概览 | 快捷操作（代理模式、出口节点、测速、更新订阅、连接、Wi-Fi 频段、重启代理、重启设备）、点卡片直达对应详情、WAN 实时吞吐曲线、信号（RSRP/SINR/频段）及历史、出口节点和代理链、Tailscale 连通性探测、本月流量、电量/CPU/内存/温度、已连接设备、健康检查及其事件 |
 | 代理 | mihomo 分组和节点、切换节点、测速、规则/全局/直连模式、更新订阅和规则集、实时连接（可筛选、一键断开） |
-| 设备 | 热点频段（2.4 GHz 或 5 GHz，F50 同一时间只能开一个）或关闭，每个频段的名称/密码/隐藏、最大连接数（不超过系统上限）、已连接设备、告警和日志推送状态、软件更新、HTTPS 与安装指引、重启代理、重启设备、校正设备时间、控制台密码、主题、深浅色和语言 |
+| 设备 | 热点频段（2.4 GHz 或 5 GHz，F50 同一时间只能开一个）或关闭，每个频段的名称/密码/隐藏、最大连接数（不超过系统上限）、已连接设备、告警和日志推送状态、软件更新、远程诊断结果、HTTPS 与安装指引、重启代理、重启设备、校正设备时间、控制台密码、主题、深浅色和语言 |
 | 日志 | mihomo、Box for Root、Glovebox、Android logcat；级别筛选、grep 高亮、跟随/暂停、自动换行 |
 
 键盘：`1`–`4` 切换页面，`/` 聚焦筛选框。
@@ -125,10 +125,13 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 | `update_mode` | `auto` | `auto` 自动安装新版本，`notify` 只提醒，`off` 不再检查 |
 | `update_interval` | `1h` | 检查间隔；启动 2 分钟后检查第一次 |
 | `update_pubkeys` | | 额外信任的 ed25519 签名公钥（base64） |
+| `diag_url` | `auto` | 拉取的签名[诊断任务](#远程诊断)；`auto` 表示自建 `update_url` 同目录下的 `diag/<device_name>.json`，为空则关闭 |
+| `diag_interval` | `1m` | 拉取间隔，最短 `15s`；执行完任务后的 10 分钟内每 15 秒一次 |
 
 `/data/adb/glovebox/` 下的文件：`config.json`、`glovebox.log`（超过 1 MiB 轮转）、`stdout.log`
 （`service.sh` 守护进程的输出）、`tls/`（本机 CA）、`events.jsonl`（健康事件）、`clock`（最后一次
-可信的时间）、`notify.json` / `ship.json`（告警和日志推送的进度）以及 `update/`（下载的安装包、上一个版本和升级状态）。升级或卸载模块都不会删除它们。
+可信的时间）、`notify.json` / `ship.json`（告警和日志推送的进度）、`update/`（下载的安装包、上一个版本和升级状态）、`diag.log`（诊断结果，超过 256 KiB 轮转）
+以及 `diag/`（执行过的任务）。升级或卸载模块都不会删除它们。
 
 ## 健康检查与上报
 
@@ -210,6 +213,45 @@ go run . update sign -key update-signing.key -zip dist/glovebox-<version>.zip \
 清单里的 `zipUrl` 可以写相对 `update.json` 的路径。fork 的仓库把密钥文件内容存进 `UPDATE_SIGNING_KEY`
 secret，也能用同样的方式给自己的 GitHub Release 签名。
 
+## 远程诊断
+
+在路上遇到问题，比如某个网站解析不了，不用连进设备也能看它那边的情况：在家里签一个诊断任务，放在
+`update.json` 旁边；设备执行后把结果随日志一起传回来。和远程升级一样，设备只主动拉取。
+
+1. Glovebox 每隔 `diag_interval` 经 `report_proxy` 拉取一次 `diag_url`。默认值 `auto` 表示自建的
+   `update_url` 同目录下的 `diag/<device_name>.json`；`update_url` 指向 GitHub 时不启用。文件不存在
+   就是没有任务。
+2. 任务必须由受信任的发布密钥签名、指定本设备且没有过期（`not_after` 最多比现在晚 24 小时），
+   每个任务只执行一次。探测按顺序执行：最多 40 个，整个任务最长 3 分钟。
+3. 每个结果写成 `/data/adb/glovebox/diag.log` 里的一行 JSON，`_msg` 是摘要，最后再写一行整个任务的
+   汇总。设置了 `log_push_url` 时会立即上报，`source="diag"`；「设备」页显示上一个任务的结果。
+4. 执行完一个任务后的 10 分钟内，设备每 15 秒拉取一次，追加的任务几秒内就能执行。
+
+| 探测 | 做什么 |
+| --- | --- |
+| `dns` | 解析 `name`（`type` 为 `A`、`AAAA` 或 `HTTPS`）：一次问热点设备用的 DNS 监听端口（`dns_probe`），一次经 mihomo 自己的解析器问上游服务器 |
+| `http` | 像热点设备一样经 mihomo 的 mixed 端口请求 `url`：状态码、跳转地址、TLS 版本和证书、各阶段耗时、命中的规则和代理链，或者错误原文。`follow` 跟随最多 5 次跳转，`ua` 指定 User-Agent，`body` 附上响应的前 512 字节 |
+| `delay` | 用 `url`（默认 `delay_url`）测 `proxy`（节点或组）的延迟 |
+| `proxies` | 每个组当前选中的节点 |
+| `connections` | 热点设备当前的 mihomo 连接，设置了 `match` 时只取包含它的，最多 200 条 |
+| `health` | 每项健康检查的状态 |
+| `log` | 把 mihomo 日志级别临时调到 `level`（`info` 或 `debug`），持续 `minutes` 分钟（默认 10，最多 30），期间的连接和 DNS 日志会随日志上报；到期自动改回，中途重启也一样 |
+
+```sh
+cat > probes.json <<'EOF'
+[{"kind":"dns","name":"accounts.google.com","type":"HTTPS"},
+ {"kind":"http","url":"https://accounts.google.com/","follow":true},
+ {"kind":"connections","match":"google"}]
+EOF
+go run . diag sign -key update-signing.key -device car -ttl 30m -in probes.json -out car.json
+# upload it as diag/car.json next to update.json; the results, in VictoriaLogs:
+curl http://192.0.2.10:9428/select/logsql/query --data-urlencode 'query=_time:1h source:diag job_id:"<id>"'
+```
+
+`-id` 是任务名（默认是当前时间），同一个 id 每台设备只执行一次。任务不能执行命令，`http` 拒绝回环和
+链路本地地址，所以碰不到控制台、mihomo 接口和原厂网页。任务唯一能改动的是临时的日志级别。注意
+`connections` 和 `log` 会把热点设备访问的网站域名传到你的日志服务器。
+
 ## 工作原理
 
 ```
@@ -231,6 +273,7 @@ secret，也能用同样的方式给自己的 GitHub Release 签名。
 - 密码用 PBKDF2-SHA256 保存；会话是 HMAC 签名的 Cookie，修改密码后全部失效。登录失败过多会锁定，等待时间按指数增长。
 - 修改状态的请求必须带 `X-Glovebox: 1` 请求头（防 CSRF）；响应带严格的 Content-Security-Policy。
 - 远程升级只安装由受信任的 ed25519 密钥签名、且 zip 与签名里的 SHA-256 和大小一致的版本，新版本起不来会自动回滚。
+- 诊断任务必须由同一套密钥签名、只指定一台设备、24 小时内过期且只执行一次；除了临时的 mihomo 日志级别，探测都是只读的。
 - Glovebox 以 root 运行，可以重启设备、修改 Wi-Fi 设置，请妥善保管控制台密码。报告安全问题见
   [SECURITY.md](SECURITY.md)。
 

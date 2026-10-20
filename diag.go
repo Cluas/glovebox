@@ -963,8 +963,12 @@ func (d *diagnoser) info() diagInfo {
 	c := d.cfg.get()
 	in := diagInfo{}
 	if u, err := url.Parse(diagURL(c)); err == nil && u.Host != "" {
-		in.Enabled, in.Source = true, u.Host
-		in.Interval = max(func() time.Duration { iv, _ := time.ParseDuration(c.DiagInterval); return iv }(), diagMinInterval).String()
+		in.Enabled, in.Source, in.Interval = true, u.Host, c.DiagInterval
+		if iv, err := time.ParseDuration(c.DiagInterval); err != nil {
+			in.Interval = "1m"
+		} else if iv < diagMinInterval {
+			in.Interval = diagMinInterval.String()
+		}
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()

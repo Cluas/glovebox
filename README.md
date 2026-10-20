@@ -28,7 +28,7 @@ English · [简体中文](README.zh-CN.md)
 | --- | --- |
 | Overview | Quick actions (proxy mode, exit node, speed test, subscription update, connections, Wi-Fi band, restart proxy, reboot), cards that open the matching detail, live WAN throughput chart, signal (RSRP/SINR/band) with history, egress node and proxy chain, Tailscale reachability probe, monthly data usage, battery/CPU/memory/temperature gauges, connected clients, health checks and their events |
 | Proxy | mihomo groups and nodes, switch nodes, latency tests, rule/global/direct mode, update subscriptions and rule sets, live connections with filter and "close all" |
-| Device | Hotspot band (2.4 GHz or 5 GHz — the F50 runs one at a time) or off, SSID/password/visibility per band, max clients (up to the system limit), connected devices, alert and log shipping status, software update, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme, light/dark and language |
+| Device | Hotspot band (2.4 GHz or 5 GHz — the F50 runs one at a time) or off, SSID/password/visibility per band, max clients (up to the system limit), connected devices, alert and log shipping status, software update, remote diagnostics results, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme, light/dark and language |
 | Logs | mihomo, Box for Root, Glovebox and Android logcat — level filter, grep with highlight, follow/pause, wrap |
 
 Keyboard: `1`–`4` switch pages, `/` focuses the filter.
@@ -134,11 +134,14 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 | `update_mode` | `auto` | `auto` installs new versions, `notify` only announces them, `off` stops checking |
 | `update_interval` | `1h` | Time between checks; the first runs 2 minutes after start |
 | `update_pubkeys` | | Extra ed25519 public keys (base64) trusted to sign releases |
+| `diag_url` | `auto` | Signed [diagnostics job](#remote-diagnostics) to poll; `auto` is `diag/<device_name>.json` next to a self-hosted `update_url`, empty turns it off |
+| `diag_interval` | `1m` | Time between polls, at least `15s`; every 15 seconds for 10 minutes after a job |
 
 Files in `/data/adb/glovebox/`: `config.json`, `glovebox.log` (rotated at 1 MiB),
 `stdout.log` (output of the supervisor in `service.sh`), `tls/` (the local CA), `events.jsonl`
 (health events), `clock` (the last trusted time), `notify.json` / `ship.json` (how far alerts
-and log shipping got) and `update/` (downloads, the previous version and the upgrade state). They survive module upgrades and uninstalls.
+and log shipping got), `update/` (downloads, the previous version and the upgrade state),
+`diag.log` (diagnostics results, rotated at 256 KiB) and `diag/` (the jobs that ran). They survive module upgrades and uninstalls.
 
 ## Health checks and reporting
 
@@ -238,6 +241,50 @@ go run . update sign -key update-signing.key -zip dist/glovebox-<version>.zip \
 `zipUrl` in the manifest may be relative to `update.json`. A fork can sign its GitHub releases the
 same way by storing the key file's contents in the `UPDATE_SIGNING_KEY` secret.
 
+## Remote diagnostics
+
+When something fails on the road, such as a site that does not resolve, you can ask the device what
+it sees without reaching it: sign a job at home and put it next to `update.json`; the device runs it
+and ships the results with its logs. As with the remote upgrade, the device only pulls.
+
+1. Every `diag_interval`, Glovebox fetches `diag_url` through `report_proxy`. The default `auto` is
+   `diag/<device_name>.json` next to a self-hosted `update_url`; it stays off while `update_url`
+   points at GitHub. A missing file means there is no job.
+2. A job runs once, and only if it is signed by a trusted release key, names this device and has
+   not expired (`not_after` at most 24 hours ahead). Its probes run in order: at most 40, and
+   3 minutes per job.
+3. Each result is a JSON line in `/data/adb/glovebox/diag.log` with a summary in `_msg`, followed by
+   a line for the whole job. With `log_push_url` set they are shipped right away with
+   `source="diag"`; the Device page shows the last job.
+4. For 10 minutes after a job the device polls every 15 seconds, so a follow-up runs within seconds.
+
+| Probe | What it does |
+| --- | --- |
+| `dns` | Resolves `name` (`type` `A`, `AAAA` or `HTTPS`) at the DNS listener hotspot clients use (`dns_probe`) and through mihomo's resolver, which asks the upstream servers |
+| `http` | Requests `url` through mihomo's mixed port, as a hotspot client would: status, redirect target, TLS version and certificate, timings, and the rule and proxy chain that carried it, or the error. `follow` follows up to 5 redirects, `ua` sets the User-Agent, `body` adds the first 512 bytes |
+| `delay` | Latency test of `proxy` (a node or group) against `url` (default `delay_url`) |
+| `proxies` | The node each group has selected |
+| `connections` | mihomo's connections from hotspot clients, those containing `match` if set, up to 200 |
+| `health` | The state of every health check |
+| `log` | Raises mihomo's log level to `level` (`info` or `debug`) for `minutes` (default 10, at most 30), so its connection and DNS log is shipped; the level goes back on its own, also after a restart |
+
+```sh
+cat > probes.json <<'EOF'
+[{"kind":"dns","name":"accounts.google.com","type":"HTTPS"},
+ {"kind":"http","url":"https://accounts.google.com/","follow":true},
+ {"kind":"connections","match":"google"}]
+EOF
+go run . diag sign -key update-signing.key -device car -ttl 30m -in probes.json -out car.json
+# upload it as diag/car.json next to update.json; the results, in VictoriaLogs:
+curl http://192.0.2.10:9428/select/logsql/query --data-urlencode 'query=_time:1h source:diag job_id:"<id>"'
+```
+
+`-id` names the job (default: the current time); a device runs each id once. Jobs cannot run
+commands, and `http` refuses loopback and link-local addresses, which keeps the console, mihomo's
+API and the vendor interface out of reach. The only change a job can make is the temporary log
+level. Keep in mind that `connections` and `log` send the names of the sites your hotspot clients
+visit to your log server.
+
 ## How it works
 
 ```
@@ -263,6 +310,8 @@ which is why Glovebox talks to 192.168.0.1 rather than loopback.
   strict Content-Security-Policy.
 - Remote upgrades only install releases signed by a trusted ed25519 key whose zip matches the
   signed SHA-256 and size, and roll back a version that does not start.
+- Diagnostics jobs need a signature by the same keys, name one device, expire within 24 hours and
+  run once; their probes only read, apart from a temporary mihomo log level.
 - Glovebox runs as root and can reboot the device and change Wi-Fi settings — treat the console
   password accordingly. See [SECURITY.md](SECURITY.md) to report issues.
 
