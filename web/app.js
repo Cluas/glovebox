@@ -651,6 +651,7 @@ function devAgo(iso) {
 }
 
 function evText(e) {
+  if (e.check === 'update') return t('ev.update.' + e.state, { msg: e.msg || '' });
   const check = tEnum('hc', e.check);
   if (e.state === 'fail') return t('alert.fail', { check });
   if (e.state === 'ok') return t('alert.ok', { check, dur: fmtDur(e.dur) });
@@ -919,6 +920,7 @@ async function loadDevice(first) {
   renderSecure();
   renderReport();
   loadHealth(first);
+  if (first || !upd) loadUpdate();
   if (first || !wifiLoaded) {
     try { renderWiFi(await api('/api/wifi')); } catch (e) {
       if (e instanceof AuthError || e instanceof NetError) return;
@@ -1095,6 +1097,109 @@ document.addEventListener('click', async (ev) => {
     toast(t('toast.timeSynced'));
     statusTick();
   }).catch(fail);
+});
+
+/* ---------- software update ---------- */
+
+let upd = null;
+let updTimer = 0;
+// updFrom is the build that started an install; the page reloads once a different build answers
+let updFrom = 0;
+
+async function loadUpdate() {
+  clearTimeout(updTimer);
+  try {
+    upd = await api('/api/update');
+  } catch (e) {
+    if (e instanceof AuthError) return;
+    // the console is down while it restarts into the new version
+    if (!updFrom) {
+      if (!(e instanceof NetError)) $('#update-body').innerHTML = `<p class="err">[ERR] ${esc(e.message)}</p>`;
+      return;
+    }
+  }
+  if (updFrom && upd.code !== updFrom) { location.reload(); return; }
+  if (updFrom && !upd.phase) {
+    // the install stopped before the restart, or the new version was rolled back
+    updFrom = 0;
+    if (upd.skipped) toast(t('upd.skipped', { version: upd.skipped }));
+  }
+  renderUpdate();
+  if (updFrom || (upd.phase && page === 'device')) updTimer = setTimeout(loadUpdate, 1500);
+}
+
+function renderUpdate() {
+  const u = upd;
+  if (!u) return;
+  const off = u.mode === 'off';
+  const kv = (k, v) => `<dt>${esc(t(k))}</dt><dd>${v}</dd>`;
+  const rows = [kv('upd.current', `${esc(u.version)}${u.built ? ` <span class="dim small">${esc(relTime(u.built))}</span>` : ''}`)];
+  if (!off) {
+    if (u.source) rows.push(kv('upd.source', esc(u.source)));
+    rows.push(kv('upd.mode', esc(t('upd.mode.' + u.mode) + (u.interval ? ' · ' + t('upd.every', { d: u.interval }) : ''))));
+    rows.push(kv('upd.checked', esc(u.checked_at ? devAgo(u.checked_at) : t('ts.never'))));
+    let latest = '—';
+    if (u.latest) latest = `<b class="ok-t">${esc(u.latest.version)}</b>`;
+    else if (u.no_release) latest = esc(t('upd.noRelease'));
+    else if (u.checked_at && !u.error) latest = `<i class="dot ok"></i>${esc(t('upd.upToDate'))}`;
+    rows.push(kv('upd.latest', latest));
+  }
+  const parts = [`<dl class="kv">${rows.join('')}</dl>`];
+  if (u.latest?.notes) parts.push(`<p class="upd-notes">${esc(u.latest.notes)}</p>`);
+  if (u.latest && u.failed) parts.push(`<p class="warn-t small">${esc(t('upd.failedBefore'))}</p>`);
+  const last = u.last;
+  if (last?.state === 'rolled_back') {
+    parts.push(`<p class="err small">${esc(t('upd.rolledBack', { to: last.to, t: devAgo(last.at), reason: last.reason || '' }))}</p>`);
+  } else if (last?.state === 'committed' && last.to === u.version) {
+    parts.push(`<p class="dim small">${esc(t('upd.lastOk', { from: last.from, t: devAgo(last.at) }))}</p>`);
+  }
+  if (u.error) parts.push(`<p class="err small">${esc(u.error)}</p>`);
+  if (u.skipped) parts.push(`<p class="dim small">${esc(t('upd.skipped', { version: u.skipped }))}</p>`);
+  const ph = u.phase || (updFrom ? 'restarting' : '');
+  if (ph) {
+    const size = u.latest?.size || 0;
+    const pct = ph === 'downloading' && size ? clamp(Math.round((u.got || 0) / size * 100), 0, 100) : -1;
+    parts.push(`<div class="upd-prog" role="status"><span>${esc(t('upd.phase.' + ph, { pct: pct < 0 ? '' : pct + '%' }))}…</span><div class="upd-bar${pct < 0 ? ' busy' : ''}"><i style="width:${pct < 0 ? 100 : pct}%"></i></div></div>`);
+  }
+  if (off) {
+    parts.push(`<p class="dim">${esc(t('upd.off'))}</p>`);
+  } else {
+    if (!u.managed) parts.push(`<p class="dim small">${esc(t('upd.unmanaged'))}</p>`);
+    const dis = ph ? ' disabled' : '';
+    parts.push(`<div class="actions"><button class="btn" data-upd-check${dis}><svg class="ic"><use href="#i-refresh"/></svg><span>${esc(t('upd.check'))}</span></button>${
+      u.latest && u.managed ? `<button class="btn pri" data-upd-install${dis}><span>${esc(t('upd.install', { version: u.latest.version }))}</span></button>` : ''}</div>`);
+  }
+  const html = parts.join('');
+  const el = $('#update-body');
+  if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
+}
+
+// renderUpdDot marks the version in the sidebar when a newer one is out
+function renderUpdDot(s) {
+  const a = $('#upd-dot');
+  a.hidden = !s.update;
+  const label = s.update ? t('ev.update.info', { msg: s.update }) : '';
+  if (a.title !== label) { a.title = label; a.setAttribute('aria-label', label); }
+  if (page === 'device' && upd && !updFrom && !upd.phase && (s.update || '') !== (upd.latest?.version || '')) loadUpdate();
+}
+
+document.addEventListener('click', async (ev) => {
+  const c = ev.target.closest('[data-upd-check]');
+  if (c) {
+    await busy(c, t('upd.phase.checking'), async () => { upd = await api('/api/update/check', {}, { timeout: 40000 }); }).catch(fail);
+    renderUpdate();
+    return;
+  }
+  const b = ev.target.closest('[data-upd-install]');
+  const v = upd?.latest;
+  if (!b || !v) return;
+  const ok = await confirmBox(t('upd.confirm', { version: esc(v.version), current: esc(upd.version) }), { ok: t('upd.install', { version: v.version }) });
+  if (!ok) return;
+  try {
+    await api('/api/update/install', { versionCode: v.versionCode });
+    updFrom = upd.code;
+    loadUpdate();
+  } catch (e) { fail(e); loadUpdate(); }
 });
 
 document.addEventListener('click', async (ev) => {
@@ -1416,6 +1521,7 @@ async function statusTick() {
       S.status = s;
       renderChips(s);
       renderStatusLine(s);
+      renderUpdDot(s);
       if (page === 'overview') renderOverview(s);
       if (page === 'device') renderClients(s.client_list, 'clients.table2', 'clients.count2');
       if (page === 'overview' || page === 'device') loadHealth();
@@ -1546,6 +1652,8 @@ function renderAll() {
   renderSecure();
   renderHealth();
   renderReport();
+  renderUpdate();
+  if (S.status) renderUpdDot(S.status);
 }
 
 /* ---------- login and boot ---------- */

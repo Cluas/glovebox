@@ -8,6 +8,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 ver=${VERSION:-$(date +%Y%m%d.%H%M)}
+# orders builds for remote upgrades (and Magisk): the build time in seconds, fits an int32 until 2038
+code=$(date +%s)
 stage=dist/stage
 rm -rf "$stage"
 mkdir -p "$stage/bin"
@@ -18,7 +20,7 @@ if [[ -n $unformatted ]]; then
   exit 1
 fi
 go vet ./...
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=$ver" -o "$stage/bin/glovebox" .
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=$ver -X main.versionCode=$code" -o "$stage/bin/glovebox" .
 cp -R module/. "$stage/"
 
 # Runtime resource overlay that raises the SoftAP client limit. Magisk mounts the module's
@@ -30,7 +32,7 @@ if [[ -z ${NO_OVERLAY:-} ]]; then
   chmod 644 "$stage/system/vendor/overlay/GloveboxWifiOverlay/GloveboxWifiOverlay.apk"
 fi
 
-sed -i.bak -e "s/^version=.*/version=$ver/" -e "s/^versionCode=.*/versionCode=$(date +%y%m%d%H)/" "$stage/module.prop"
+sed -i.bak -e "s/^version=.*/version=$ver/" -e "s/^versionCode=.*/versionCode=$code/" "$stage/module.prop"
 rm -f "$stage/module.prop.bak"
 chmod 755 "$stage/bin/glovebox" "$stage/service.sh"
 

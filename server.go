@@ -29,6 +29,7 @@ type server struct {
 	health *health
 	notify *notifier
 	ship   *shipper
+	update *updater
 	// demo mode: in-process fake ZTE / mihomo backends, synthetic system info,
 	// destructive actions are only logged
 	demo bool
@@ -70,6 +71,7 @@ func newServer(cs *configStore, dataDir, logDir string) *server {
 	out := &outbound{}
 	s.notify = newNotifier(cs, s.events, s.health, out, dataDir)
 	s.ship = newShipper(cs, s.events, s.health, out, dataDir, logDir)
+	s.update = newUpdater(cs, s.events, s.health, out, dataDir)
 	return s
 }
 
@@ -121,6 +123,8 @@ func (s *server) run(ctx context.Context) error {
 			go func() { errc <- tlsSrv.ServeTLS(ln, "", "") }()
 		}
 	}
+	// started once the listeners are up: a new version confirms itself by staying up from here
+	go s.update.loop(ctx)
 	select {
 	case <-ctx.Done():
 	case err := <-errc:
@@ -182,6 +186,9 @@ func (s *server) routes() http.Handler {
 	authed("GET /api/logs", s.handleLogs)
 	authed("GET /api/health", s.handleHealth)
 	authed("POST /api/report/test", s.handleReportTest)
+	authed("GET /api/update", s.handleUpdate)
+	authed("POST /api/update/check", s.handleUpdateCheck)
+	authed("POST /api/update/install", s.handleUpdateInstall)
 
 	mux.Handle("GET /", staticHandler())
 	return s.guard(mux)

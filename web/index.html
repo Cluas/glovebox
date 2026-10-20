@@ -82,7 +82,7 @@
     </nav>
     <div class="side-foot">
       <dl class="mini">
-        <dt>VER</dt><dd data-k="info.version">—</dd>
+        <dt>VER</dt><dd><span data-k="info.version">—</span><a class="upd-dot" id="upd-dot" href="#device/update" hidden></a></dd>
         <dt>FW</dt><dd data-k="sys.fw">—</dd>
         <dt>UP</dt><dd data-k="sys.up">—</dd>
       </dl>
@@ -312,14 +312,9 @@
           </div>
         </article>
 
-        <article class="panel s6 m-full" id="maint">
-          <header class="ph"><span class="pi">⏻</span><h2><span class="tt">MAINTENANCE</span><span class="tn" data-i18n="ttl.maint">Maintenance</span></h2><span class="sub" data-i18n="p.maint">maintenance</span></header>
-          <div class="pb actions">
-            <button class="btn" id="btn-box-restart"><svg class="ic"><use href="#i-refresh"/></svg><span data-i18n="act.restartProxy">Restart proxy</span></button>
-            <button class="btn" data-sync-time><span data-i18n="act.syncTime">Sync clock from this device</span></button>
-            <button class="btn danger" id="btn-reboot"><span data-i18n="act.reboot">Reboot device</span></button>
-            <button class="btn ghost" data-logout><svg class="ic"><use href="#i-logout"/></svg><span data-i18n="act.logout">Log out</span></button>
-          </div>
+        <article class="panel s6 m-full" id="update">
+          <header class="ph"><span class="pi">⇪</span><h2><span class="tt">UPDATE</span><span class="tn" data-i18n="ttl.update">Software update</span></h2><span class="sub" data-i18n="p.update">remote upgrade</span></header>
+          <div class="pb" id="update-body"><p class="dim" data-i18n="logs.loading">loading…</p></div>
         </article>
 
         <article class="panel s6 m-full">
@@ -331,6 +326,16 @@
             <label class="field"><span class="lbl" data-i18n="pw.again">Repeat new password</span><input type="password" id="pw-again" autocomplete="new-password" minlength="6" required></label>
             <button class="btn pri" type="submit" data-i18n="act.save">Save</button>
           </form>
+        </article>
+
+        <article class="panel s12" id="maint">
+          <header class="ph"><span class="pi">⏻</span><h2><span class="tt">MAINTENANCE</span><span class="tn" data-i18n="ttl.maint">Maintenance</span></h2><span class="sub" data-i18n="p.maint">maintenance</span></header>
+          <div class="pb actions">
+            <button class="btn" id="btn-box-restart"><svg class="ic"><use href="#i-refresh"/></svg><span data-i18n="act.restartProxy">Restart proxy</span></button>
+            <button class="btn" data-sync-time><span data-i18n="act.syncTime">Sync clock from this device</span></button>
+            <button class="btn danger" id="btn-reboot"><span data-i18n="act.reboot">Reboot device</span></button>
+            <button class="btn ghost" data-logout><svg class="ic"><use href="#i-logout"/></svg><span data-i18n="act.logout">Log out</span></button>
+          </div>
         </article>
       </div>
     </section>

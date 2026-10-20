@@ -28,7 +28,7 @@ English · [简体中文](README.zh-CN.md)
 | --- | --- |
 | Overview | Quick actions (proxy mode, exit node, speed test, subscription update, connections, Wi-Fi band, restart proxy, reboot), cards that open the matching detail, live WAN throughput chart, signal (RSRP/SINR/band) with history, egress node and proxy chain, Tailscale reachability probe, monthly data usage, battery/CPU/memory/temperature gauges, connected clients, health checks and their events |
 | Proxy | mihomo groups and nodes, switch nodes, latency tests, rule/global/direct mode, update subscriptions and rule sets, live connections with filter and "close all" |
-| Device | Hotspot band (2.4 GHz or 5 GHz — the F50 runs one at a time) or off, SSID/password/visibility per band, max clients (up to the system limit), connected devices, alert and log shipping status, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme, light/dark and language |
+| Device | Hotspot band (2.4 GHz or 5 GHz — the F50 runs one at a time) or off, SSID/password/visibility per band, max clients (up to the system limit), connected devices, alert and log shipping status, software update, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme, light/dark and language |
 | Logs | mihomo, Box for Root, Glovebox and Android logcat — level filter, grep with highlight, follow/pause, wrap |
 
 Keyboard: `1`–`4` switch pages, `/` focuses the filter.
@@ -130,11 +130,15 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 | `webhook_url` | | Receives every health event as a JSON POST |
 | `log_push_url` | | Loki push endpoint for logs and events; `user:password@` in the URL is sent as basic auth |
 | `dns_probe` | `127.0.0.1:1053` | mihomo DNS listener asked by the DNS check; empty skips that part |
+| `update_url` | `update.json` of the latest GitHub release | Signed release manifest checked for [remote upgrades](#remote-upgrade); empty turns them off |
+| `update_mode` | `auto` | `auto` installs new versions, `notify` only announces them, `off` stops checking |
+| `update_interval` | `1h` | Time between checks; the first runs 2 minutes after start |
+| `update_pubkeys` | | Extra ed25519 public keys (base64) trusted to sign releases |
 
 Files in `/data/adb/glovebox/`: `config.json`, `glovebox.log` (rotated at 1 MiB),
 `stdout.log` (output of the supervisor in `service.sh`), `tls/` (the local CA), `events.jsonl`
-(health events), `clock` (the last trusted time) and `notify.json` / `ship.json` (how far alerts
-and log shipping got). They survive module upgrades and uninstalls.
+(health events), `clock` (the last trusted time), `notify.json` / `ship.json` (how far alerts
+and log shipping got) and `update/` (downloads, the previous version and the upgrade state). They survive module upgrades and uninstalls.
 
 ## Health checks and reporting
 
@@ -185,6 +189,54 @@ docker run -d --name victorialogs --restart unless-stopped -p 9428:9428 \
   -storageDataPath=/vlogs -retentionPeriod=30d
 ```
 
+## Remote upgrade
+
+Glovebox checks `update_url` for a newer release and installs it on its own, so a fix reaches a
+device on the road without adb. The device pulls the release; nothing has to reach it, which suits
+cellular networks behind CGNAT.
+
+1. Every `update_interval`, Glovebox fetches `update.json` through `report_proxy`. It names the
+   version, the SHA-256 and size of the module zip, and carries an ed25519 signature over them.
+   Manifests that are unsigned, signed by an unknown key or not newer than the running build are
+   ignored.
+2. The zip is downloaded to `/data/adb/glovebox/update/` and checked against the signed SHA-256 and
+   size. Only `bin/glovebox`, `module.prop` and the module scripts are taken from it, and the new
+   binary has to run and report the expected version.
+3. The current files are copied to `update/prev/`, the new ones take their place and the console
+   restarts. That takes about 5 seconds; the proxy and Wi-Fi keep running.
+4. The new version commits itself after a minute of running. If it has not done so within
+   3 minutes (it crashes, hangs or never starts), the previous binary, which stays behind as a
+   watchdog, restores the old files. If the device loses power in between, `service.sh` restores
+   them after three quick crashes at the next boot. Automatic upgrades skip a version that was
+   rolled back; installing it by hand retries it.
+
+Each outcome is a health event, so Telegram and the webhook report "Updated A → B" and "Update
+failed" with the reason, and in `notify` mode "Update X is available". The software update panel on
+the Device page shows the state and can check and install by hand.
+
+The client-limit overlay (`system/`) is not updated this way because it only applies after a
+reboot; install the module zip or run `deploy.sh` for releases that change it.
+
+### Publishing your own builds
+
+Official releases are signed in CI with the key built into Glovebox. To push your own builds, create
+a key once, trust it on the device, and publish the signed manifest next to the zip on any HTTP
+server the device can reach (through `report_proxy` if one is set):
+
+```sh
+go run . update keygen -out update-signing.key    # prints the public key; keep the file private
+# on the device: trust the key and point it at your server
+echo '{"update_pubkeys":["<public key>"],"update_url":"http://192.0.2.10:8088/update.json"}' \
+  | su -c '/data/adb/modules/glovebox/bin/glovebox config import'
+./build.sh
+go run . update sign -key update-signing.key -zip dist/glovebox-<version>.zip \
+  -notes "Fix log shipping" -out update.json
+# upload the zip first, then update.json
+```
+
+`zipUrl` in the manifest may be relative to `update.json`. A fork can sign its GitHub releases the
+same way by storing the key file's contents in the `UPDATE_SIGNING_KEY` secret.
+
 ## How it works
 
 ```
@@ -208,6 +260,8 @@ which is why Glovebox talks to 192.168.0.1 rather than loopback.
   when the password changes. Failed logins lock out with exponential back-off.
 - State-changing requests require an `X-Glovebox: 1` header (CSRF protection); responses carry a
   strict Content-Security-Policy.
+- Remote upgrades only install releases signed by a trusted ed25519 key whose zip matches the
+  signed SHA-256 and size, and roll back a version that does not start.
 - Glovebox runs as root and can reboot the device and change Wi-Fi settings — treat the console
   password accordingly. See [SECURITY.md](SECURITY.md) to report issues.
 

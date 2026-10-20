@@ -104,6 +104,9 @@
 [data-skin="ios"] .pb { padding: 10px 16px 16px; }
 [data-skin="ios"] .pb.flush { padding: 4px 0 0; }
 [data-skin="ios"] :is(.kv.cols, .mini-chart, .stats, .usage + .usage, .secure-steps details) { border-top-style: solid; border-top-color: var(--line); }
+[data-skin="ios"] .upd-notes { border-left: 0; border-radius: 10px; background: var(--fill); }
+[data-skin="ios"] :is(.upd-bar, .upd-bar i) { border-radius: 999px; }
+[data-skin="ios"] .upd-bar { background: var(--fill-2); }
 [data-skin="ios"] .kv dt { font-size: .94rem; color: var(--fg); }
 [data-skin="ios"] .kv dd { color: var(--fg-2); }
 [data-skin="ios"] .kv { gap: 9px 16px; }

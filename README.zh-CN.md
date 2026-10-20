@@ -26,7 +26,7 @@
 | --- | --- |
 | 概览 | 快捷操作（代理模式、出口节点、测速、更新订阅、连接、Wi-Fi 频段、重启代理、重启设备）、点卡片直达对应详情、WAN 实时吞吐曲线、信号（RSRP/SINR/频段）及历史、出口节点和代理链、Tailscale 连通性探测、本月流量、电量/CPU/内存/温度、已连接设备、健康检查及其事件 |
 | 代理 | mihomo 分组和节点、切换节点、测速、规则/全局/直连模式、更新订阅和规则集、实时连接（可筛选、一键断开） |
-| 设备 | 热点频段（2.4 GHz 或 5 GHz，F50 同一时间只能开一个）或关闭，每个频段的名称/密码/隐藏、最大连接数（不超过系统上限）、已连接设备、告警和日志推送状态、HTTPS 与安装指引、重启代理、重启设备、校正设备时间、控制台密码、主题、深浅色和语言 |
+| 设备 | 热点频段（2.4 GHz 或 5 GHz，F50 同一时间只能开一个）或关闭，每个频段的名称/密码/隐藏、最大连接数（不超过系统上限）、已连接设备、告警和日志推送状态、软件更新、HTTPS 与安装指引、重启代理、重启设备、校正设备时间、控制台密码、主题、深浅色和语言 |
 | 日志 | mihomo、Box for Root、Glovebox、Android logcat；级别筛选、grep 高亮、跟随/暂停、自动换行 |
 
 键盘：`1`–`4` 切换页面，`/` 聚焦筛选框。
@@ -121,10 +121,14 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 | `webhook_url` | | 每个健康事件都以 JSON POST 到这个地址 |
 | `log_push_url` | | 日志和事件的 Loki 推送地址；URL 里的 `user:password@` 作为 Basic 认证发送 |
 | `dns_probe` | `127.0.0.1:1053` | DNS 检查要询问的 mihomo DNS 监听地址；为空则跳过这一项 |
+| `update_url` | GitHub 最新 Release 的 `update.json` | [远程升级](#远程升级)检查的签名清单地址；为空则关闭远程升级 |
+| `update_mode` | `auto` | `auto` 自动安装新版本，`notify` 只提醒，`off` 不再检查 |
+| `update_interval` | `1h` | 检查间隔；启动 2 分钟后检查第一次 |
+| `update_pubkeys` | | 额外信任的 ed25519 签名公钥（base64） |
 
 `/data/adb/glovebox/` 下的文件：`config.json`、`glovebox.log`（超过 1 MiB 轮转）、`stdout.log`
 （`service.sh` 守护进程的输出）、`tls/`（本机 CA）、`events.jsonl`（健康事件）、`clock`（最后一次
-可信的时间）以及 `notify.json` / `ship.json`（告警和日志推送的进度）。升级或卸载模块都不会删除它们。
+可信的时间）、`notify.json` / `ship.json`（告警和日志推送的进度）以及 `update/`（下载的安装包、上一个版本和升级状态）。升级或卸载模块都不会删除它们。
 
 ## 健康检查与上报
 
@@ -168,6 +172,43 @@ docker run -d --name victorialogs --restart unless-stopped -p 9428:9428 \
   -storageDataPath=/vlogs -retentionPeriod=30d
 ```
 
+## 远程升级
+
+Glovebox 会定时检查 `update_url` 上有没有新版本，有就自己安装，修好的版本不用插 adb 就能送到在路上的设备。
+升级由设备主动拉取，不需要从外面连进设备，所以在蜂窝网络的 CGNAT 后面也能用。
+
+1. 每隔 `update_interval`，Glovebox 经 `report_proxy` 拉取 `update.json`。清单里写着版本号、模块 zip
+   的 SHA-256 和大小，并带有对这些内容的 ed25519 签名。没有签名、公钥不受信任、或者版本不比当前新的清单都会被忽略。
+2. zip 下载到 `/data/adb/glovebox/update/`，核对签名里的 SHA-256 和大小。只取出 `bin/glovebox`、
+   `module.prop` 和模块脚本，新二进制还要能运行并报出预期的版本号。
+3. 当前文件先复制到 `update/prev/`，再换成新文件，然后控制台重启。整个过程大约 5 秒，代理和 Wi-Fi 不受影响。
+4. 新版本稳定运行一分钟后确认升级。如果 3 分钟内没有确认（崩溃、卡死或根本没起来），留下来当守护进程的旧版本会还原旧文件。
+   如果期间设备断电，下次开机时 `service.sh` 发现新版本连续三次很快退出，也会还原。回滚过的版本不会再被自动安装，手动安装可以重试。
+
+每个结果都会记成一条健康事件，Telegram 和 webhook 会收到「已升级 A → B」「升级失败」（附原因），
+`notify` 模式下还会收到「有新版本 X」。设备页的「软件更新」面板显示当前状态，也可以手动检查和安装。
+
+热点连接数 overlay（`system/`）不走这个流程，因为它要重启设备才生效；改了它的版本请用模块 zip 或 `deploy.sh` 安装。
+
+### 发布自己构建的版本
+
+官方 Release 在 CI 里用编译进 Glovebox 的密钥签名。要推送自己构建的版本，先生成一次密钥，让设备信任它，
+再把签名清单和 zip 一起放到设备能访问的任意 HTTP 服务器上（设置了 `report_proxy` 时经它访问）：
+
+```sh
+go run . update keygen -out update-signing.key    # prints the public key; keep the file private
+# on the device: trust the key and point it at your server
+echo '{"update_pubkeys":["<public key>"],"update_url":"http://192.0.2.10:8088/update.json"}' \
+  | su -c '/data/adb/modules/glovebox/bin/glovebox config import'
+./build.sh
+go run . update sign -key update-signing.key -zip dist/glovebox-<version>.zip \
+  -notes "Fix log shipping" -out update.json
+# upload the zip first, then update.json
+```
+
+清单里的 `zipUrl` 可以写相对 `update.json` 的路径。fork 的仓库把密钥文件内容存进 `UPDATE_SIGNING_KEY`
+secret，也能用同样的方式给自己的 GitHub Release 签名。
+
 ## 工作原理
 
 ```
@@ -188,6 +229,7 @@ docker run -d --name victorialogs --restart unless-stopped -p 9428:9428 \
 - 控制台只接受来自 `allow_cidrs` 的连接（默认是热点局域网）。
 - 密码用 PBKDF2-SHA256 保存；会话是 HMAC 签名的 Cookie，修改密码后全部失效。登录失败过多会锁定，等待时间按指数增长。
 - 修改状态的请求必须带 `X-Glovebox: 1` 请求头（防 CSRF）；响应带严格的 Content-Security-Policy。
+- 远程升级只安装由受信任的 ed25519 密钥签名、且 zip 与签名里的 SHA-256 和大小一致的版本，新版本起不来会自动回滚。
 - Glovebox 以 root 运行，可以重启设备、修改 Wi-Fi 设置，请妥善保管控制台密码。报告安全问题见
   [SECURITY.md](SECURITY.md)。
 

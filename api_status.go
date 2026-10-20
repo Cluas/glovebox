@@ -172,6 +172,9 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	c := s.cfg.get()
 	out := map[string]any{"time": time.Now().Format("2006-01-02 15:04:05"), "unix": time.Now().Unix()}
+	if v := s.update.available(); v != "" {
+		out["update"] = v
+	}
 	errs := map[string]string{}
 
 	z, err := s.zteStatus(ctx)

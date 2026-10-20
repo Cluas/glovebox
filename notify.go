@@ -108,8 +108,9 @@ func newNotifier(cfg *configStore, events *eventLog, h *health, out *outbound, d
 		{
 			name:    "telegram",
 			enabled: Config.telegramEnabled,
-			// started and clock_fixed are only logged: the device starts with every drive
-			wants: func(e event) bool { return e.State != "info" },
+			// started and clock_fixed are only logged: the device starts with every drive. A new
+			// version is announced (notify mode) because nobody may open the console to see it.
+			wants: func(e event) bool { return e.State != "info" || e.Check == "update" },
 			send: func(ctx context.Context, hc *http.Client, c Config, evs []event, dropped int64) (int, error) {
 				return sendTelegram(ctx, hc, n.telegramAPI, c, evs, dropped)
 			},
@@ -354,6 +355,9 @@ func fmtDuration(sec int64) string {
 
 // eventText is the one-line, translated description of an event
 func eventText(lang, device string, e event) string {
+	if e.Check == "update" {
+		return tr(lang, "ev.update."+e.State, map[string]string{"msg": e.Msg})
+	}
 	check := tr(lang, "hc."+e.Check, nil)
 	switch e.State {
 	case "fail":
@@ -368,6 +372,9 @@ func eventText(lang, device string, e event) string {
 
 func telegramBlock(lang, device string, e event, withLog bool) string {
 	mark := map[string]string{"fail": "\U0001F534", "ok": "\U0001F7E2", "test": "\U0001F514"}[e.State]
+	if e.Check == "update" && e.State == "info" {
+		mark = "\U0001F195"
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s <b>%s</b>", mark, html.EscapeString(eventText(lang, device, e)))
 	if e.State != "test" {

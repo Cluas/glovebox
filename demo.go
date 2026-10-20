@@ -6,7 +6,11 @@ package main
 // reboot or setting the clock are only logged. Used for frontend work, screenshots and tests.
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -85,11 +89,23 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 	c.DeviceName = "demo"
 	c.TelegramToken, c.TelegramChat = "demo", "demo"
 	c.LogPushURL = "http://" + sinkAddr + "/insert/loki/api/v1/push"
+	rel, err := newFakeRelease(time.Now())
+	if err != nil {
+		return nil, err
+	}
+	relAddr, err := serveLocal(ctx, rel)
+	if err != nil {
+		return nil, err
+	}
+	c.UpdateURL = "http://" + relAddr + "/update.json"
+	c.UpdateMode = "notify" // shows the install button rather than skipping an install
 	cs := &configStore{c: c}
 
 	s := newServer(cs, dir, dir)
 	s.notify.telegramAPI = "http://" + sinkAddr
 	s.demo = true
+	s.update.demo = true
+	s.update.extraKeys = []ed25519.PublicKey{rel.pub}
 	s.net.synth = true
 	start := time.Now()
 	s.sys = func() sysInfo { return demoSys(start) }
@@ -102,7 +118,61 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 		s.sigHist = append(s.sigHist, sigSample{&rsrp, &sinr})
 	}
 	demoEvents(s.events, start)
+	// the update panel starts out with a newer version found
+	s.update.check(ctx)
 	return s, nil
+}
+
+// fakeRelease serves a signed update.json and module zip, newer than any dev build
+type fakeRelease struct {
+	pub      ed25519.PublicKey
+	manifest []byte
+	zip      []byte
+	zipName  string
+}
+
+func newFakeRelease(now time.Time) (*fakeRelease, error) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		return nil, err
+	}
+	ver := now.Add(24 * time.Hour).Format("20060102.1504")
+	code := now.Unix()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, body := range map[string]string{
+		"module.prop":  fmt.Sprintf("id=glovebox\nname=Glovebox\nversion=%s\nversionCode=%d\n", ver, code),
+		"bin/glovebox": "#!/bin/sh\necho " + ver + "\n",
+	} {
+		w, err := zw.Create(name)
+		if err != nil {
+			return nil, err
+		}
+		io.WriteString(w, body)
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	r := &fakeRelease{pub: pub, zip: buf.Bytes(), zipName: "glovebox-" + ver + ".zip"}
+	sum := sha256.Sum256(r.zip)
+	m := manifest{Version: ver, VersionCode: code, ZipURL: r.zipName, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(r.zip)),
+		Notes: "Demo release: faster proxy page, clearer health alerts."}
+	m.Sig = base64.StdEncoding.EncodeToString(ed25519.Sign(priv, m.signedText()))
+	r.manifest, err = json.Marshal(m)
+	return r, err
+}
+
+func (r *fakeRelease) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	switch req.URL.Path {
+	case "/update.json":
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(r.manifest)
+	case "/" + r.zipName:
+		w.Header().Set("Content-Type", "application/zip")
+		w.Write(r.zip)
+	default:
+		http.NotFound(w, req)
+	}
 }
 
 // demoEvents is the history of a drive: a cold start with the clock fixed by the network, a

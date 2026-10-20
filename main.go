@@ -29,6 +29,7 @@ Commands:
   config                print the effective configuration (without secrets)
   config import         merge JSON from stdin into the configuration file
   demo [-listen addr]   run without a device (fake backends, synthetic data), default 127.0.0.1:8080
+  update keygen|sign    make a signing key, sign a module zip for remote upgrades (see README)
   version               print the version
 
 Options:
@@ -56,25 +57,20 @@ func main() {
 	case "demo":
 		exitOn(runDemo(flag.Args()[1:]))
 		return
+	case "update":
+		exitOn(updateCmd(flag.Args()[1:]))
+		return
+	case "update-guard": // started by an upgrade, see update.go
+		openLog(*cfgPath, *logPath)
+		exitOn(runGuard(*cfgPath, flag.Args()[1:]))
+		return
 	case "", "serve":
 	default:
 		flag.Usage()
 		os.Exit(2)
 	}
 
-	logDir := filepath.Dir(*cfgPath)
-	if *logPath != "-" {
-		p := *logPath
-		if p == "" {
-			p = filepath.Join(logDir, logFileName)
-		}
-		logDir = filepath.Dir(p)
-		lw, err := newRotatingLog(p, 1<<20)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.SetOutput(lw)
-	}
+	logDir := openLog(*cfgPath, *logPath)
 	setLocalTZ()
 	// PATH may be incomplete when started by Magisk; ip, getprop and logcat live in /system/bin
 	if _, err := os.Stat("/system/bin"); err == nil && !strings.Contains(os.Getenv("PATH"), "/system/bin") {
@@ -104,6 +100,24 @@ func main() {
 	if err := s.run(ctx); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// openLog sends the log to logPath (default: glovebox.log next to the config file, - for stderr)
+// and returns the directory of the log file
+func openLog(cfgPath, logPath string) string {
+	logDir := filepath.Dir(cfgPath)
+	if logPath == "-" {
+		return logDir
+	}
+	if logPath == "" {
+		logPath = filepath.Join(logDir, logFileName)
+	}
+	lw, err := newRotatingLog(logPath, 1<<20)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.SetOutput(lw)
+	return filepath.Dir(logPath)
 }
 
 func exitOn(err error) {

@@ -31,7 +31,19 @@ jobs:
           if [ -n "$KEYSTORE_B64" ]; then echo "$KEYSTORE_B64" | base64 -d > overlay/overlay.keystore; fi
           export KEYSTORE_PASS=${KEYSTORE_PASS:-android}
           VERSION=${GITHUB_REF_NAME#v} ./build.sh
+      - name: sign the update manifest
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          # devices poll releases/latest/download/update.json; a fork without the secret ships the zip only
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then echo "no UPDATE_SIGNING_KEY, skipping update.json"; exit 0; fi
+          key=$RUNNER_TEMP/update.key
+          printf '%s\n' "$UPDATE_SIGNING_KEY" > "$key"
+          zip=$(ls dist/glovebox-*.zip)
+          go run . update sign -key "$key" -zip "$zip" -out dist/update.json \
+            -url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$(basename "$zip")"
+          rm -f "$key"
       - name: publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/glovebox-*.zip --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/glovebox-*.zip $(ls dist/update.json 2>/dev/null) --generate-notes

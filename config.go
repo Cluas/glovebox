@@ -74,6 +74,16 @@ type Config struct {
 	LogPushURL string `json:"log_push_url"`
 	// mihomo DNS listener queried by the dns check; empty skips the listener part of the check
 	DNSProbe string `json:"dns_probe"`
+
+	// remote upgrade (update.go): the signed manifest to poll, empty disables; it is fetched
+	// through report_proxy like the reports
+	UpdateURL string `json:"update_url"`
+	// auto installs a newer version, notify only reports it, off stops checking
+	UpdateMode string `json:"update_mode"`
+	// how often to check, a Go duration of at least 5m
+	UpdateInterval string `json:"update_interval"`
+	// ed25519 public keys (base64) trusted besides the built-in ones, for self-built releases
+	UpdatePubkeys []string `json:"update_pubkeys"`
 }
 
 func defaultConfig() Config {
@@ -95,7 +105,10 @@ func defaultConfig() Config {
 		DeviceName:  "glovebox",
 		ReportLang:  "en",
 		// Box for Root redirects DNS to mihomo on this port
-		DNSProbe: "127.0.0.1:1053",
+		DNSProbe:       "127.0.0.1:1053",
+		UpdateURL:      defaultUpdateURL,
+		UpdateMode:     "auto",
+		UpdateInterval: "1h",
 	}
 }
 

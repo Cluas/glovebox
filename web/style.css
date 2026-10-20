@@ -521,6 +521,16 @@ td .sub { display: block; color: var(--fg-2); font-size: .76rem; }
 .secure-steps summary { cursor: pointer; color: var(--fg-1); min-height: 28px; }
 .secure-steps ol { margin: 8px 0 0; padding-left: 20px; color: var(--fg-1); font-size: .9rem; }
 .fp { font-size: .76rem; color: var(--fg-2); word-break: break-all; }
+#update-body { display: grid; gap: 10px; }
+#update-body > * { margin: 0; }
+.upd-notes { padding: 8px 10px; border-left: 2px solid var(--a); background: rgba(var(--a-rgb), .06); color: var(--fg-1); font-size: .86rem; white-space: pre-wrap; }
+.upd-prog { font-size: .86rem; color: var(--fg-1); }
+.upd-bar { height: 4px; margin-top: 6px; background: var(--line-2); overflow: hidden; }
+.upd-bar i { display: block; height: 100%; background: var(--a); box-shadow: 0 0 calc(6px * var(--glow)) var(--a); transition: width .4s ease; }
+.upd-bar.busy i { width: 30% !important; animation: upd-slide 1.2s ease-in-out infinite; }
+@keyframes upd-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.upd-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--a); box-shadow: 0 0 calc(8px * var(--glow)) rgba(var(--a-rgb), .8); vertical-align: 1px; }
+.upd-dot[hidden] { display: none; }
 
 /* ---------- logs ---------- */
 .logterm { width: 100%; display: flex; flex-direction: column; height: calc(100dvh - var(--top-h) - var(--sa-t) - var(--status-h) - var(--tab-h) - var(--sa-b) - 48px); min-height: 360px; }
