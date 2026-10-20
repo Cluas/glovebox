@@ -377,6 +377,8 @@ func (u *updater) noteRollback() {
 	u.change(func(s *updateState) { s.Noted = true; st = *s })
 	os.Remove(filepath.Join(u.dir, pendingMarker))
 	os.Remove(filepath.Join(u.dir, rollbackMarker))
+	os.RemoveAll(filepath.Join(u.dir, "new"))
+	u.cleanZips()
 	log.Printf("update to %s was rolled back: %s", st.To, st.Reason)
 	u.events.add(event{Check: "update", State: "fail", Msg: st.To + ": " + st.Reason})
 }

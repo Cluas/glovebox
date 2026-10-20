@@ -368,6 +368,12 @@ func TestUpgradeRollsBack(t *testing.T) {
 	if e := tu.lastEvent(); e.State != "fail" || !strings.HasPrefix(e.Msg, "2.0: ") {
 		t.Errorf("event %+v", e)
 	}
+	if left, _ := filepath.Glob(filepath.Join(u.dir, "*.zip*")); len(left) > 0 {
+		t.Errorf("the failed download was kept: %v", left)
+	}
+	if _, err := os.Stat(filepath.Join(u.dir, "new")); err == nil {
+		t.Error("the extracted module was kept")
+	}
 	n := tu.events.lastSeq()
 	u2.settle(ctx)
 	if tu.events.lastSeq() != n {

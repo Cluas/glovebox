@@ -62,6 +62,7 @@ func main() {
 		return
 	case "update-guard": // started by an upgrade, see update.go
 		openLog(*cfgPath, *logPath)
+		setLocalTZ()
 		exitOn(runGuard(*cfgPath, flag.Args()[1:]))
 		return
 	case "", "serve":
