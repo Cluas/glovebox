@@ -184,9 +184,9 @@ func checkProbeURL(raw string) error {
 // diagResult is one line of diag.log. time comes first: the shipper stamps lines with it.
 type diagResult struct {
 	Time  time.Time `json:"time"`
-	Msg   string    `json:"_msg"` // the message field of VictoriaLogs
-	Job   string    `json:"job"`
-	N     int       `json:"n"` // probe number, 0 for the job summary
+	Msg   string    `json:"_msg"`   // the message field of VictoriaLogs
+	Job   string    `json:"job_id"` // not "job": that is a stream label of the shipped logs
+	N     int       `json:"n"`      // probe number, 0 for the job summary
 	Kind  string    `json:"kind"`
 	OK    bool      `json:"ok"`
 	Ms    int64     `json:"ms"`
