@@ -164,7 +164,8 @@ Three optional channels report the events, each enabled by its keys in the confi
 - **Logs**: the mihomo, Box for Root and Glovebox logs and the events are pushed with the Loki
   push protocol, which Grafana Loki, VictoriaLogs and Grafana Alloy accept. The log files are the
   buffer: lines count as sent only once the server accepted them, so whatever was logged without
-  coverage is sent later.
+  coverage is sent later. An event is a JSON line with `check`, `state`, `msg` and `dur`, and a
+  summary such as `dns fail: timeout` in `_msg`, the message field of VictoriaLogs.
 
 Undelivered alerts and logs are retried with back-off, also after a restart or a power cut. The
 Device page shows the state of each channel and sends a test message on request.

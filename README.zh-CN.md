@@ -148,7 +148,8 @@ F50 没有 RTC 电池，断电后开机时间会回到很早的日期，直到�
   `text`）。
 - **日志**：mihomo、Box for Root、Glovebox 的日志和健康事件按 Loki 推送协议发送，Grafana Loki、
   VictoriaLogs、Grafana Alloy 都能接收。日志文件本身就是缓冲：服务器确认收到后才算发出，没信号时
-  写下的日志之后会补发。
+  写下的日志之后会补发。每个事件是一行 JSON，包含 `check`、`state`、`msg`、`dur`，`_msg` 里是
+  `dns fail: timeout` 这样的摘要（VictoriaLogs 把 `_msg` 当作日志正文）。
 
 没送出去的告警和日志会退避重试，重启或断电后也会继续。「设备」页显示每个渠道的状态，也可以发一条
 测试消息。

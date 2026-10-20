@@ -178,7 +178,7 @@ func TestShipLogs(t *testing.T) {
 	e.round(sh2)
 	e.round(sh2)
 	got := e.loki.take("events")
-	if len(got) != 1 || !strings.Contains(got[0], `"check":"dns"`) {
+	if len(got) != 1 || !strings.Contains(got[0], `"_msg":"dns fail: timeout"`) || !strings.Contains(got[0], `"check":"dns"`) {
 		t.Fatalf("events shipped: %q", got)
 	}
 

@@ -140,7 +140,7 @@ func (sh *shipper) round(ctx context.Context) (more bool, err error) {
 	if evs := sh.events.since(st.EventSeq); len(evs) > 0 {
 		vals := make([][2]string, 0, len(evs))
 		for _, e := range evs {
-			b, _ := json.Marshal(e)
+			b, _ := json.Marshal(shippedEvent{Line: eventLine(e), event: e})
 			vals = append(vals, [2]string{strconv.FormatInt(e.Time.UnixNano(), 10), string(b)})
 		}
 		streams = append(streams, lokiStream{Stream: sh.labels(c, "events"), Values: vals})
@@ -158,6 +158,22 @@ func (sh *shipper) round(ctx context.Context) (more bool, err error) {
 	}
 	sh.commit(st, behind, len(streams) > 0)
 	return more, nil
+}
+
+// shippedEvent is an event as a JSON log line. VictoriaLogs takes the message from _msg and the
+// other keys as fields; Loki keeps the whole line.
+type shippedEvent struct {
+	Line string `json:"_msg"`
+	event
+}
+
+// eventLine is a short summary such as "dns fail: timeout"
+func eventLine(e event) string {
+	s := e.Check + " " + e.State
+	if e.Msg != "" {
+		s += ": " + e.Msg
+	}
+	return s
 }
 
 func (sh *shipper) labels(c Config, source string) map[string]string {
