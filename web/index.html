@@ -36,6 +36,11 @@
   <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5a13 13 0 0 1 0 17M12 3.5a13 13 0 0 0 0 17"/></symbol>
+  <symbol id="i-speed" viewBox="0 0 24 24"><path d="M4.2 17.5a8.5 8.5 0 1 1 15.6 0"/><path d="M12 14.5l3.8-4.3"/><circle cx="12" cy="15" r="1"/></symbol>
+  <symbol id="i-conns" viewBox="0 0 24 24"><path d="M7 20V5M3.5 8.5L7 5l3.5 3.5M17 4v15M13.5 15.5L17 19l3.5-3.5"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2.5 9a13.5 13.5 0 0 1 19 0M5.6 12.4a9 9 0 0 1 12.8 0M8.7 15.8a4.6 4.6 0 0 1 6.6 0M12 19.5h.01"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3.5v8M6.6 6.6a7.8 7.8 0 1 0 10.8 0"/></symbol>
 </svg>
 
 <!-- login / boot -->
@@ -91,10 +96,10 @@
     <div class="crumb"><span class="dim">~/</span><span id="crumb">overview</span><span class="caret"></span></div>
     <span class="top-title" id="top-title"></span>
     <div class="chips">
-      <span class="chip" data-k="chip.cell"><i class="dot"></i><span>CELL</span><b>—</b></span>
-      <span class="chip" data-k="chip.proxy"><i class="dot"></i><span>PROXY</span><b>—</b></span>
-      <span class="chip" data-k="chip.ts" hidden><i class="dot"></i><span>TAILNET</span><b>—</b></span>
-      <a class="chip" href="#overview" data-k="chip.alert" hidden><i class="dot bad"></i><span>ALERT</span><b>—</b></a>
+      <span class="chip" data-k="chip.cell" data-go="#overview/cell" role="link" tabindex="0"><i class="dot"></i><span>CELL</span><b>—</b></span>
+      <span class="chip" data-k="chip.proxy" data-go="#proxy" role="link" tabindex="0"><i class="dot"></i><span>PROXY</span><b>—</b></span>
+      <span class="chip" data-k="chip.ts" data-go="#overview/ts" role="link" tabindex="0" hidden><i class="dot"></i><span>TAILNET</span><b>—</b></span>
+      <a class="chip" href="#overview/health" data-k="chip.alert" hidden><i class="dot bad"></i><span>ALERT</span><b>—</b></a>
     </div>
     <time class="clock" id="clock">--:--:--</time>
   </header>
@@ -109,29 +114,50 @@
         <button class="btn pri" data-sync-time data-i18n="act.syncTime">Sync clock from this device</button>
       </div>
       <div class="grid">
-        <article class="panel kpi s3" data-k="kpi.down.panel">
-          <header class="ph"><span class="pi">↓</span><h2><span class="tt">DOWNLINK</span><span class="tn" data-i18n="kpi.down">Downlink</span></h2><span class="sub" data-i18n="kpi.down">Downlink</span></header>
+        <article class="panel kpi s3" data-k="kpi.down.panel" data-go="conns" role="button" tabindex="0">
+          <header class="ph"><span class="pi">↓</span><h2><span class="tt">DOWNLINK</span><span class="tn" data-i18n="kpi.down">Downlink</span></h2><span class="sub" data-i18n="kpi.down">Downlink</span><svg class="ic go-chev" aria-hidden="true"><use href="#i-chevron"/></svg></header>
           <div class="pb"><div class="val"><span data-k="kpi.down">—</span><small data-k="kpi.down.u">Mbps</small></div>
             <div class="kpi-meta"><span><span class="tt">PEAK</span><span class="tn" data-i18n="kpi.peak">Peak</span> <b data-k="kpi.down.peak">—</b></span><span><span class="tt">AVG</span><span class="tn" data-i18n="kpi.avg">Avg</span> <b data-k="kpi.down.avg">—</b></span></div>
             <svg class="spark" data-k="kpi.down.spark" viewBox="0 0 120 32" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg></div>
         </article>
-        <article class="panel kpi s3 alt">
-          <header class="ph"><span class="pi">↑</span><h2><span class="tt">UPLINK</span><span class="tn" data-i18n="kpi.up">Uplink</span></h2><span class="sub" data-i18n="kpi.up">Uplink</span></header>
+        <article class="panel kpi s3 alt" data-go="conns" role="button" tabindex="0">
+          <header class="ph"><span class="pi">↑</span><h2><span class="tt">UPLINK</span><span class="tn" data-i18n="kpi.up">Uplink</span></h2><span class="sub" data-i18n="kpi.up">Uplink</span><svg class="ic go-chev" aria-hidden="true"><use href="#i-chevron"/></svg></header>
           <div class="pb"><div class="val"><span data-k="kpi.up">—</span><small data-k="kpi.up.u">Mbps</small></div>
             <div class="kpi-meta"><span><span class="tt">PEAK</span><span class="tn" data-i18n="kpi.peak">Peak</span> <b data-k="kpi.up.peak">—</b></span><span><span class="tt">AVG</span><span class="tn" data-i18n="kpi.avg">Avg</span> <b data-k="kpi.up.avg">—</b></span></div>
             <svg class="spark" data-k="kpi.up.spark" viewBox="0 0 120 32" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg></div>
         </article>
-        <article class="panel kpi s3">
-          <header class="ph"><span class="pi">◢</span><h2><span class="tt">SIGNAL</span><span class="tn" data-i18n="kpi.signal">Signal</span></h2><span class="sub" data-i18n="kpi.signal">Signal</span></header>
+        <article class="panel kpi s3" data-go="#overview/cell" role="link" tabindex="0">
+          <header class="ph"><span class="pi">◢</span><h2><span class="tt">SIGNAL</span><span class="tn" data-i18n="kpi.signal">Signal</span></h2><span class="sub" data-i18n="kpi.signal">Signal</span><svg class="ic go-chev" aria-hidden="true"><use href="#i-chevron"/></svg></header>
           <div class="pb"><div class="val"><span data-k="kpi.rsrp">—</span><small>dBm</small><span class="bars" data-k="kpi.bars"><i></i><i></i><i></i><i></i><i></i></span></div>
             <div class="kpi-meta"><span data-k="kpi.net">—</span><span>SINR <b data-k="kpi.sinr">—</b></span></div>
             <svg class="spark" data-k="kpi.sig.spark" viewBox="0 0 120 32" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg></div>
         </article>
-        <article class="panel kpi s3">
-          <header class="ph"><span class="pi">◎</span><h2><span class="tt">EGRESS</span><span class="tn" data-i18n="kpi.egress">Egress</span></h2><span class="sub" data-i18n="kpi.egress">Egress</span></header>
+        <article class="panel kpi s3" data-k="kpi.egress" data-go="#proxy" role="link" tabindex="0">
+          <header class="ph"><span class="pi">◎</span><h2><span class="tt">EGRESS</span><span class="tn" data-i18n="kpi.egress">Egress</span></h2><span class="sub" data-i18n="kpi.egress">Egress</span><svg class="ic go-chev" aria-hidden="true"><use href="#i-chevron"/></svg></header>
           <div class="pb"><div class="val val-text" data-k="kpi.node">—</div>
             <div class="kpi-meta"><span data-k="kpi.chain" class="ell">—</span></div>
             <div class="kpi-meta"><span class="tag" data-k="kpi.mode">—</span><span><b data-k="kpi.conns">—</b> <span class="tt">CONNS</span><span class="tn" data-i18n="kpi.conns">connections</span></span></div></div>
+        </article>
+
+        <article class="panel s12 quick" id="quick">
+          <header class="ph"><span class="pi"><svg class="ic"><use href="#i-bolt"/></svg></span><h2><span class="tt">QUICK</span><span class="tn" data-i18n="ttl.quick">Quick actions</span></h2><span class="sub" data-i18n="p.quick">one tap</span>
+            <div class="pa qa-mode"><span class="lbl" data-i18n="qa.mode">Proxy mode</span>
+              <div class="seg" id="qa-mode" role="group" aria-label="mode">
+                <button type="button" data-mode="rule"><b>RULE</b><small data-i18n="mode.rule">Rule</small></button>
+                <button type="button" data-mode="global"><b>GLOBAL</b><small data-i18n="mode.global">Global</small></button>
+                <button type="button" data-mode="direct"><b>DIRECT</b><small data-i18n="mode.direct">Direct</small></button>
+              </div></div></header>
+          <div class="pb">
+            <div class="qa-grid">
+              <button type="button" class="qa" data-qa="node"><svg class="ic"><use href="#i-globe"/></svg><span class="qa-tx"><b data-i18n="qa.node">Exit node</b><small class="qa-st" data-k="qa.node">—</small></span></button>
+              <button type="button" class="qa" data-qa="test"><svg class="ic"><use href="#i-speed"/></svg><span class="qa-tx"><b data-i18n="qa.test">Speed test</b><small class="qa-st" data-k="qa.test">—</small></span></button>
+              <button type="button" class="qa" data-qa="update"><svg class="ic"><use href="#i-install"/></svg><span class="qa-tx"><b data-i18n="proxy.updateAll">Update subs</b><small class="qa-st" data-k="qa.update">—</small></span></button>
+              <button type="button" class="qa" data-qa="conns"><svg class="ic"><use href="#i-conns"/></svg><span class="qa-tx"><b data-i18n="qa.conns">Connections</b><small class="qa-st" data-k="qa.conns">—</small></span></button>
+              <button type="button" class="qa" data-qa="band"><svg class="ic"><use href="#i-wifi"/></svg><span class="qa-tx"><b data-i18n="qa.band">Wi-Fi band</b><small class="qa-st" data-k="qa.band">—</small></span></button>
+              <button type="button" class="qa" data-qa="restart"><svg class="ic"><use href="#i-refresh"/></svg><span class="qa-tx"><b data-i18n="act.restartProxy">Restart proxy</b><small class="qa-st" data-k="qa.restart">—</small></span></button>
+              <button type="button" class="qa danger" data-qa="reboot"><svg class="ic"><use href="#i-power"/></svg><span class="qa-tx"><b data-i18n="act.reboot">Reboot device</b><small class="qa-st" data-k="qa.reboot">—</small></span></button>
+            </div>
+          </div>
         </article>
 
         <article class="panel s8 m-full">
@@ -139,7 +165,7 @@
             <div class="pa legend"><span class="lg a">WAN ↓</span><span class="lg b">WAN ↑</span></div></header>
           <div class="pb chart-wrap"><canvas id="chart" aria-label="throughput chart"></canvas><div class="chart-tip" id="chart-tip" hidden></div></div>
         </article>
-        <article class="panel s4 m-full">
+        <article class="panel s4 m-full" id="cell">
           <header class="ph"><span class="pi">02</span><h2><span class="tt">CELLULAR</span><span class="tn" data-i18n="ttl.cell">Cellular</span></h2><span class="sub" data-i18n="p.cell">mobile network</span><div class="pa"><span class="tag" data-k="cell.state">—</span></div></header>
           <div class="pb">
             <p class="err" data-k="cell.err" hidden></p>
@@ -169,7 +195,7 @@
             </dl>
           </div>
         </article>
-        <article class="panel s3 m-half">
+        <article class="panel s3 m-half" id="ts">
           <header class="ph"><span class="pi">04</span><h2><span class="tt">TAILNET</span><span class="tn" data-i18n="ttl.tailnet">Tailnet</span></h2></header>
           <div class="pb ts">
             <div class="ts-off" data-k="ts.off" hidden><p class="dim" data-i18n="ts.off">Not configured. Set tailscale_proxy and tailscale_probe in config.json to enable.</p></div>
@@ -196,7 +222,7 @@
         </article>
 
         <article class="panel s6 m-full">
-          <header class="ph"><span class="pi">06</span><h2><span class="tt">SYSTEM</span><span class="tn" data-i18n="ttl.system">System</span></h2><span class="sub" data-i18n="p.system">device</span><div class="pa"><span class="tag" data-k="sys.power">—</span></div></header>
+          <header class="ph"><span class="pi">06</span><h2><span class="tt">SYSTEM</span><span class="tn" data-i18n="ttl.system">System</span></h2><span class="sub" data-i18n="p.system">device</span><div class="pa"><span class="tag" data-k="sys.power">—</span><a class="btn ghost sm" href="#device/maint" data-i18n="act.manage">Manage</a></div></header>
           <div class="pb">
             <div class="gauges">
               <figure class="gauge" data-k="g.bat"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span><span class="tt">BAT</span><span class="tn" data-i18n="g.bat">Battery</span></span></figcaption></figure>
@@ -207,7 +233,7 @@
             <dl class="kv cols">
               <dt data-i18n="sys.uptime">Uptime</dt><dd data-k="sys.uptime">—</dd>
               <dt data-i18n="sys.load">Load</dt><dd data-k="sys.load">—</dd>
-              <dt>Wi-Fi</dt><dd data-k="sys.wifi">—</dd>
+              <dt>Wi-Fi</dt><dd><a href="#device/wifi" data-k="sys.wifi">—</a></dd>
               <dt data-i18n="sys.battery">Battery</dt><dd data-k="sys.battery">—</dd>
               <dt data-i18n="sys.hottest">Hottest</dt><dd data-k="sys.hottest">—</dd>
               <dt data-i18n="sys.firmware">Firmware</dt><dd data-k="sys.firmware">—</dd>
@@ -219,7 +245,7 @@
           <div class="pb flush"><div class="table-wrap" data-k="clients.table"></div></div>
         </article>
         <article class="panel s12" id="health">
-          <header class="ph"><span class="pi">08</span><h2><span class="tt">HEALTH</span><span class="tn" data-i18n="ttl.health">Health</span></h2><span class="sub" data-i18n="p.health">checks &amp; events</span><div class="pa"><span class="tag" data-k="hc.summary">—</span></div></header>
+          <header class="ph"><span class="pi">08</span><h2><span class="tt">HEALTH</span><span class="tn" data-i18n="ttl.health">Health</span></h2><span class="sub" data-i18n="p.health">checks &amp; events</span><div class="pa"><span class="tag" data-k="hc.summary">—</span><a class="btn ghost sm" href="#logs/glovebox" data-i18n="nav.logs">Logs</a></div></header>
           <div class="pb hc-checks"><ul class="checks" data-k="hc.checks"></ul><div data-k="hc.errs"></div></div>
           <div class="pb flush"><div class="table-wrap" data-k="hc.events"></div></div>
         </article>
@@ -255,7 +281,7 @@
       <div class="grid">
         <div class="s12 wifi-grid" id="wifi"><article class="panel"><div class="pb dim" data-i18n="logs.loading">loading…</div></article></div>
 
-        <article class="panel s12">
+        <article class="panel s12" id="clients">
           <header class="ph"><span class="pi">◎</span><h2><span class="tt">CLIENTS</span><span class="tn" data-i18n="ttl.clients">Clients</span></h2><span class="sub" data-i18n="p.clients">connected devices</span><div class="pa"><span class="tag" data-k="clients.count2">0</span></div></header>
           <div class="pb flush"><div class="table-wrap" data-k="clients.table2"></div></div>
         </article>
@@ -270,7 +296,7 @@
           <div class="pb" id="secure-body"></div>
         </article>
 
-        <article class="panel s6 m-full">
+        <article class="panel s6 m-full" id="prefs">
           <header class="ph"><span class="pi">⚙</span><h2><span class="tt">PREFERENCES</span><span class="tn" data-i18n="ttl.prefs">Preferences</span></h2><span class="sub" data-i18n="p.prefs">interface</span></header>
           <div class="pb form">
             <div class="field"><span class="lbl" data-i18n="pref.theme">Theme</span>
@@ -286,7 +312,7 @@
           </div>
         </article>
 
-        <article class="panel s6 m-full">
+        <article class="panel s6 m-full" id="maint">
           <header class="ph"><span class="pi">⏻</span><h2><span class="tt">MAINTENANCE</span><span class="tn" data-i18n="ttl.maint">Maintenance</span></h2><span class="sub" data-i18n="p.maint">maintenance</span></header>
           <div class="pb actions">
             <button class="btn" id="btn-box-restart"><svg class="ic"><use href="#i-refresh"/></svg><span data-i18n="act.restartProxy">Restart proxy</span></button>

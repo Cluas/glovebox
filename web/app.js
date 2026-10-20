@@ -220,10 +220,13 @@ function openModal({ title, html, ok = t('act.ok'), cancel = t('act.cancel'), wi
 const confirmBox = (html, opt = {}) => openModal({ title: t('confirm.title'), html, ...opt });
 
 async function busy(btn, label, fn) {
-  const old = btn.innerHTML;
+  // quick action tiles keep their icon and name and show the progress in their status line
+  const el = btn.querySelector('.qa-st') || btn;
+  const old = el.innerHTML;
   btn.disabled = true;
-  if (label) btn.textContent = label + '…';
-  try { return await fn(); } finally { btn.disabled = false; btn.innerHTML = old; }
+  btn.setAttribute('aria-busy', 'true');
+  if (label) el.textContent = label + '…';
+  try { return await fn(); } finally { btn.disabled = false; btn.removeAttribute('aria-busy'); el.innerHTML = old; }
 }
 
 /* ---------- data binding ---------- */
@@ -510,6 +513,8 @@ function renderOverview(s) {
   put('kpi.mode', p.running ? String(p.mode || '—').toUpperCase() : 'DOWN');
   K['kpi.mode'].className = 'tag ' + (p.running ? 'acc' : 'bad');
   put('kpi.conns', p.connections ?? '—');
+  K['kpi.egress'].dataset.go = p.group ? groupLink(p.group) : '#proxy';
+  renderQuick(s);
 
   // throughput
   const toM = (a) => (a || []).map((x) => (x * 8) / 1e6);
@@ -537,18 +542,19 @@ function renderOverview(s) {
   // route
   K['route.err'].hidden = p.running || !err.mihomo;
   put('route.err', !p.running && err.mihomo ? '[ERR] mihomo: ' + err.mihomo : '');
-  const hops = [[t('route.clients'), String(s.clients ?? 0)], ['mihomo', p.running ? String(p.mode || '').toUpperCase() : 'DOWN']];
+  // each hop links to where it is managed; a node opens the group it was picked in
+  const hops = [[t('route.clients'), String(s.clients ?? 0), '#device/clients'], ['mihomo', p.running ? String(p.mode || '').toUpperCase() : 'DOWN', '#proxy']];
   if (p.running && p.mode !== 'direct' && p.group) {
-    hops.push(['group', p.group]);
-    chain.forEach((n, i) => hops.push([i === chain.length - 1 ? 'node' : 'group', n]));
+    hops.push(['group', p.group, groupLink(p.group)]);
+    chain.forEach((n, i) => hops.push(i === chain.length - 1 ? ['node', n, groupLink(i ? chain[i - 1] : p.group)] : ['group', n, groupLink(n)]));
   }
-  hops.push(['wan', p.running && p.mode === 'direct' ? 'DIRECT' : t('route.internet')]);
+  hops.push(['wan', p.running && p.mode === 'direct' ? 'DIRECT' : t('route.internet'), '#overview/cell']);
   const rs = JSON.stringify(hops) + lang;
   if (rs !== routeSig) {
     routeSig = rs;
     const endIdx = hops.findIndex((x) => x[0] === 'node');
-    K['route.chain'].innerHTML = hops.map(([k, v], i) =>
-      `<li><span class="hop${i === endIdx ? ' end' : ''}"><small>${esc(k.toUpperCase())}</small><span title="${esc(v)}">${esc(v)}</span></span></li>`).join('');
+    K['route.chain'].innerHTML = hops.map(([k, v, href], i) =>
+      `<li><a class="hop${i === endIdx ? ' end' : ''}" href="${esc(href)}"><small>${esc(k.toUpperCase())}</small><span title="${esc(v)}">${esc(v)}</span></a></li>`).join('');
   }
   put('route.conns', p.running ? p.connections ?? 0 : '—');
   put('route.down', p.running ? fmtBytes(p.download_total) : '—');
@@ -651,6 +657,8 @@ function evText(e) {
   return t('ev.' + e.check, { msg: e.msg || '', dur: fmtDur(e.dur) });
 }
 
+const HC_LOG = { mihomo: 'box', dns: 'mihomo', proxy: 'mihomo', tailscale: 'mihomo' };
+
 function renderHealth() {
   const d = H.data;
   if (!d) return;
@@ -666,7 +674,9 @@ function renderHealth() {
   const dot = { ok: 'ok', fail: 'bad', skip: 'warn' };
   K['hc.checks'].innerHTML = checks.map((c) => {
     const tip = c.state === 'fail' ? c.msg : c.state === 'skip' ? t('hc.skipped') : c.state ? '' : t('hc.waiting');
-    return `<li class="${esc(c.state || 'wait')}" title="${esc(tip)}"><i class="dot ${dot[c.state] || ''}"></i>${esc(tEnum('hc', c.name))}</li>`;
+    const label = `<i class="dot ${dot[c.state] || ''}"></i>${esc(tEnum('hc', c.name))}`;
+    // a failing check links to the log most likely to say why
+    return `<li class="${esc(c.state || 'wait')}" title="${esc(tip)}">${c.state === 'fail' ? `<a href="#logs/${HC_LOG[c.name] || 'system'}">${label}</a>` : label}</li>`;
   }).join('');
   K['hc.errs'].innerHTML = bad.map((c) =>
     `<p class="err small"><b>${esc(tEnum('hc', c.name))}</b> · ${esc(devAgo(c.since))} · ${esc(c.msg || '')}</p>`).join('');
@@ -724,12 +734,26 @@ async function loadProxies(first) {
     $('#proxy-err').hidden = true;
     if (first && !openGroups.size && d.groups && d.groups.length) openGroups.add(d.groups[0].name);
     S.proxies = d;
+    S.proxiesAt = Date.now();
     renderProxies();
+    if (S.status) renderQuick(S.status);
   } catch (e) {
     if (e instanceof AuthError || e instanceof NetError) return;
     $('#proxy-err').hidden = false;
     $('#proxy-err').textContent = '[ERR] ' + e.message;
   }
+}
+
+const groupLink = (name) => '#proxy/' + encodeURIComponent(name);
+
+// nodeCard renders one member of a group; clicking it selects that member
+function nodeCard(g, n) {
+  const dc = n.group ? 'd-none' : delayCls(n.delay);
+  const width = n.group || n.delay < 0 ? 0 : n.delay === 0 ? 100 : clamp(n.delay / 10, 4, 100);
+  return `<button type="button" class="node${n.name === g.now ? ' sel' : ''}" data-g="${esc(g.name)}" data-n="${esc(n.name)}" ${g.type === 'Selector' ? '' : 'disabled'} title="${esc(n.name)}">
+    <span class="nn">${esc(n.name)}</span>
+    <span class="nm"><span>${esc(n.group ? t('node.group') : (n.type || '').toLowerCase())}</span><span class="nd ${dc}">${n.group ? '' : delayText(n.delay)}</span></span>
+    <i class="nbar ${dc}" style="width:${width}%"></i></button>`;
 }
 
 function renderProxies(force) {
@@ -746,15 +770,8 @@ function renderProxies(force) {
     const open = openGroups.has(g.name) || !!q;
     const selectable = g.type === 'Selector';
     const chain = g.chain && g.chain.length ? g.chain : [g.now];
-    const cards = open ? `<div class="nodes">${nodes.map((n) => {
-      const dc = n.group ? 'd-none' : delayCls(n.delay);
-      const width = n.group || n.delay < 0 ? 0 : n.delay === 0 ? 100 : clamp(n.delay / 10, 4, 100);
-      return `<button class="node${n.name === g.now ? ' sel' : ''}" data-g="${esc(g.name)}" data-n="${esc(n.name)}" ${selectable ? '' : 'disabled'} title="${esc(n.name)}">
-        <span class="nn">${esc(n.name)}</span>
-        <span class="nm"><span>${esc(n.group ? t('node.group') : (n.type || '').toLowerCase())}</span><span class="nd ${dc}">${n.group ? '' : delayText(n.delay)}</span></span>
-        <i class="nbar ${dc}" style="width:${width}%"></i></button>`;
-    }).join('')}</div>` : '';
-    return `<article class="panel group${open ? ' open' : ''}">
+    const cards = open ? `<div class="nodes">${nodes.map((n) => nodeCard(g, n)).join('')}</div>` : '';
+    return `<article class="panel group${open ? ' open' : ''}" data-group="${esc(g.name)}">
       <header class="ph" data-toggle="${esc(g.name)}">
         <svg class="ic chev"><use href="#i-chevron"/></svg>
         <h2 class="gname" title="${esc(g.name)}">${esc(g.name)}</h2>
@@ -773,35 +790,56 @@ function renderProxies(force) {
     : '<p class="empty">—</p>';
 }
 
-$('#groups').addEventListener('click', async (ev) => {
+// testGroup runs a delay test on a group's nodes and resolves to the result, or null when it failed
+async function testGroup(group) {
+  testing.add(group);
+  renderProxies();
+  if (S.status) renderQuick(S.status);
+  let r = null;
+  try {
+    r = await api('/api/proxies/delay', { group }, { timeout: 30000 });
+    if (r.error) toast(t('toast.testFailed', { err: r.error }), true);
+    const groups = S.proxies?.groups || [];
+    const g = groups.find((x) => x.name === group);
+    const tested = new Set(g ? g.nodes.filter((n) => !n.group).map((n) => n.name) : []);
+    // a node can appear in several groups; update all of them
+    if (r.delays) groups.forEach((gg) => gg.nodes.forEach((n) => { if (tested.has(n.name)) n.delay = r.delays[n.name] ?? 0; }));
+  } catch (e) { fail(e); }
+  testing.delete(group);
+  renderProxies(true);
+  if (S.status) renderQuick(S.status);
+  return r;
+}
+
+async function selectNode(group, name) {
+  try {
+    await api('/api/proxies/select', { group, name });
+    toast(t('toast.switched', { name }));
+    await loadProxies();
+    statusTick();
+  } catch (e) { fail(e); }
+}
+
+async function setMode(mode) {
+  try {
+    await api('/api/proxies/mode', { mode });
+    toast(t('toast.mode', { mode: tEnum('mode', mode) }));
+    await loadProxies();
+    statusTick();
+  } catch (e) { fail(e); }
+}
+
+$('#groups').addEventListener('click', (ev) => {
   const testBtn = ev.target.closest('[data-test]');
   if (testBtn) {
     ev.stopPropagation();
-    const group = testBtn.dataset.test;
-    testing.add(group);
-    openGroups.add(group);
-    renderProxies();
-    try {
-      const r = await api('/api/proxies/delay', { group }, { timeout: 30000 });
-      if (r.error) toast(t('toast.testFailed', { err: r.error }), true);
-      const g = S.proxies.groups.find((x) => x.name === group);
-      const tested = new Set(g ? g.nodes.filter((n) => !n.group).map((n) => n.name) : []);
-      // a node can appear in several groups; update all of them
-      S.proxies.groups.forEach((gg) => gg.nodes.forEach((n) => { if (tested.has(n.name)) n.delay = r.delays[n.name] ?? 0; }));
-    } catch (e) { fail(e); }
-    testing.delete(group);
-    renderProxies(true);
+    openGroups.add(testBtn.dataset.test);
+    testGroup(testBtn.dataset.test);
     return;
   }
   const node = ev.target.closest('.node');
   if (node) {
-    if (node.disabled) return;
-    try {
-      await api('/api/proxies/select', { group: node.dataset.g, name: node.dataset.n });
-      toast(t('toast.switched', { name: node.dataset.n }));
-      await loadProxies();
-      statusTick();
-    } catch (e) { fail(e); }
+    if (!node.disabled) selectNode(node.dataset.g, node.dataset.n);
     return;
   }
   const head = ev.target.closest('[data-toggle]');
@@ -813,16 +851,11 @@ $('#groups').addEventListener('click', async (ev) => {
   }
 });
 
-$('#mode').addEventListener('click', async (ev) => {
+// the proxy page toolbar and the overview's quick actions both switch the mode
+$$('#mode, #qa-mode').forEach((seg) => seg.addEventListener('click', (ev) => {
   const b = ev.target.closest('button[data-mode]');
-  if (!b) return;
-  try {
-    await api('/api/proxies/mode', { mode: b.dataset.mode });
-    toast(t('toast.mode', { mode: tEnum('mode', b.dataset.mode) }));
-    await loadProxies();
-    statusTick();
-  } catch (e) { fail(e); }
-});
+  if (b && !b.disabled && !b.classList.contains('on')) setMode(b.dataset.mode);
+}));
 
 $('#node-filter').addEventListener('input', () => renderProxies());
 
@@ -844,7 +877,7 @@ $('#providers').addEventListener('click', (ev) => {
   if (b) updateProviders(b, { kind: b.dataset.kind, name: b.dataset.update });
 });
 
-$('#btn-conns').addEventListener('click', async () => {
+async function openConnections() {
   let list = [];
   let timer = null;
   const render = (body) => {
@@ -871,9 +904,10 @@ $('#btn-conns').addEventListener('click', async () => {
     onClose: () => clearInterval(timer),
   });
   if (ok) {
-    try { await api('/api/proxies/close-connections', {}); toast(t('conns.closed')); } catch (e) { fail(e); }
+    try { await api('/api/proxies/close-connections', {}); toast(t('conns.closed')); statusTick(); } catch (e) { fail(e); }
   }
-});
+}
+$('#btn-conns').addEventListener('click', () => openConnections());
 
 /* ---------- device ---------- */
 
@@ -895,16 +929,20 @@ async function loadDevice(first) {
 
 let wifiData = null;
 
+// the F50 runs one band at a time, so the bands are a choice rather than two switches
+function bandSeg(d) {
+  const bandBtn = (chip, label, sub) => `<button type="button" data-wifi-band="${esc(chip)}" class="${d.active === chip ? 'on' : ''}" aria-pressed="${d.active === chip}"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
+  return `<div class="seg">${(d.aps || []).map((ap) => bandBtn(ap.chip, ap.band, ap.ssid)).join('')}${bandBtn('', 'OFF', '')}</div>`;
+}
+
 function renderWiFi(d) {
   wifiLoaded = true;
   wifiData = d;
   const max = d.max_supported || 10;
   const aps = d.aps || [];
-  // the F50 runs one band at a time, so the bands are a choice rather than two switches
-  const bandBtn = (chip, label, sub) => `<button type="button" data-wifi-band="${esc(chip)}" class="${d.active === chip ? 'on' : ''}" aria-pressed="${d.active === chip}"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
   const band = `<article class="panel s12 wifi-band">
     <header class="ph"><span class="pi">≋</span><h2><span class="tt">WLAN</span><span class="tn">${esc(t('ttl.wlan'))}</span></h2><span class="sub">${t('wifi.bandSub')}</span><div class="pa"><span class="tag ${d.active ? 'ok' : ''}">${d.active ? 'ON' : 'OFF'}</span></div></header>
-    <div class="pb"><div class="seg">${aps.map((ap) => bandBtn(ap.chip, ap.band, ap.ssid)).join('')}${bandBtn('', 'OFF', '')}</div>
+    <div class="pb">${bandSeg(d)}
       <p class="note">${t('wifi.bandNote')}</p></div></article>`;
   $('#wifi').innerHTML = band + aps.map((ap) => {
     const cur = Number(ap.max_clients) || 0;
@@ -925,20 +963,25 @@ function renderWiFi(d) {
   }).join('');
 }
 
+// switchBand turns on one band (chip) or, with chip "", Wi-Fi off; both drop every connected device
+async function switchBand(chip, btn) {
+  const ap = (wifiData?.aps || []).find((a) => a.chip === chip);
+  const msg = ap ? t('wifi.confirmBand', { band: esc(ap.band), ssid: esc(ap.ssid) }) : t('wifi.confirmOff');
+  if (!(await confirmBox(msg, { danger: true }))) return;
+  const run = async () => {
+    await api('/api/wifi/band', { chip }, { timeout: 40000 });
+    toast(ap ? t('wifi.bandSet', { band: ap.band }) : t('wifi.offDone'));
+    wifiLoaded = false;
+    wifiData = { ...wifiData, active: chip };
+    setTimeout(() => { if (page === 'device') loadDevice(true); statusTick(); }, 3000);
+  };
+  await (btn ? busy(btn, '', run) : run()).catch(fail);
+}
+
 $('#wifi').addEventListener('click', async (ev) => {
   const bb = ev.target.closest('[data-wifi-band]');
   if (bb) {
-    if (bb.classList.contains('on')) return;
-    const chip = bb.dataset.wifiBand;
-    const ap = (wifiData?.aps || []).find((a) => a.chip === chip);
-    const msg = ap ? t('wifi.confirmBand', { band: esc(ap.band), ssid: esc(ap.ssid) }) : t('wifi.confirmOff');
-    if (!(await confirmBox(msg, { danger: true }))) return;
-    await busy(bb, '', async () => {
-      await api('/api/wifi/band', { chip }, { timeout: 40000 });
-      toast(ap ? t('wifi.bandSet', { band: ap.band }) : t('wifi.offDone'));
-      wifiLoaded = false;
-      setTimeout(() => page === 'device' && loadDevice(true), 3000);
-    }).catch(fail);
+    if (!bb.classList.contains('on')) switchBand(bb.dataset.wifiBand, bb);
     return;
   }
   const b = ev.target.closest('[data-showpw]');
@@ -1024,22 +1067,25 @@ document.addEventListener('click', async (ev) => {
   updateInstallUI();
 });
 
-$('#btn-box-restart').addEventListener('click', async (ev) => {
-  const btn = ev.currentTarget;
+async function restartProxy(btn) {
   if (!(await confirmBox(t('confirm.restartProxy')))) return;
   await busy(btn, null, async () => {
     await api('/api/box/restart', {});
     toast(t('toast.restartingProxy'));
+    statusTick();
   }).catch(fail);
-});
+}
 
-$('#btn-reboot').addEventListener('click', async () => {
+async function rebootDevice() {
   if (!(await confirmBox(t('confirm.reboot'), { ok: t('act.reboot'), danger: true }))) return;
   try {
     await api('/api/device/reboot', {});
     toast(t('toast.rebooting'));
   } catch (e) { fail(e); }
-});
+}
+
+$('#btn-box-restart').addEventListener('click', (ev) => restartProxy(ev.currentTarget));
+$('#btn-reboot').addEventListener('click', () => rebootDevice());
 
 document.addEventListener('click', async (ev) => {
   const b = ev.target.closest('[data-sync-time]');
@@ -1131,6 +1177,126 @@ $('#pref-crt').addEventListener('change', (ev) => {
   renderThemes();
 });
 
+/* ---------- quick actions ---------- */
+
+function bandText(s) {
+  if (!s.wifi) return '—';
+  if (!s.wifi.on) return t('state.off');
+  const ap = wifiData && (wifiData.aps || []).find((a) => a.chip === wifiData.active);
+  return ap ? `${ap.band} · ${ap.ssid}` : s.wifi.ssid || '—';
+}
+
+// renderQuick fills the overview tiles' status lines; a busy tile keeps its progress text
+function renderQuick(s) {
+  const p = s.proxy || {};
+  const tile = (k, v, off) => {
+    const btn = K[k].closest('.qa');
+    if (btn.hasAttribute('aria-busy')) return;
+    btn.disabled = !!off;
+    put(k, v);
+  };
+  $$('#qa-mode button').forEach((b) => { b.classList.toggle('on', !!p.running && b.dataset.mode === p.mode); b.disabled = !p.running; });
+  const chain = p.now || [];
+  const down = !p.running;
+  tile('qa.node', down ? t('proxy.offline') : chain[chain.length - 1] || p.group || '—', down || !p.group);
+  tile('qa.test', testing.has(p.group) ? t('act.testing') + '…' : p.group || '—', down || !p.group || testing.has(p.group));
+  const updated = (S.proxies?.providers || []).filter((x) => x.kind === 'proxies').map((x) => Date.parse(x.updated_at)).filter((x) => x > 0);
+  tile('qa.update', updated.length ? t('qa.updated', { t: relTime(new Date(Math.min(...updated)).toISOString()) }) : '—', down);
+  tile('qa.conns', down ? '—' : t('qa.connsN', { n: p.connections ?? 0 }), down);
+  tile('qa.band', bandText(s));
+  tile('qa.restart', down ? t('qa.stopped') : ['mihomo', p.version].filter(Boolean).join(' '));
+  tile('qa.reboot', s.uptime ? `${t('sys.uptime')} ${fmtDur(s.uptime.seconds)}` : '—');
+  // the node and subscription tiles read the proxy list, which the overview refreshes now and then
+  if (p.running && Date.now() - Math.max(S.proxiesTry || 0, S.proxiesAt || 0) > 60000) {
+    S.proxiesTry = Date.now();
+    loadProxies();
+  }
+}
+
+// openNodeSheet lists the main group's nodes; picking one switches to it
+async function openNodeSheet() {
+  if (Date.now() - (S.proxiesAt || 0) > 10000) await loadProxies();
+  const name = S.status?.proxy?.group;
+  const g0 = (S.proxies?.groups || []).find((x) => x.name === name);
+  if (!g0) { location.hash = '#proxy'; return; }
+  let box = null;
+  const draw = () => {
+    if (!box?.isConnected) return;
+    const g = S.proxies.groups.find((x) => x.name === name) || g0;
+    box.querySelector('.nodes').innerHTML = g.nodes.map((n) => nodeCard(g, n)).join('');
+    const tb = box.querySelector('[data-sheet-test]');
+    tb.disabled = testing.has(name);
+    tb.textContent = testing.has(name) ? t('act.testing') + '…' : t('act.test');
+  };
+  await openModal({
+    title: name, wide: true, ok: '', cancel: t('act.close'),
+    html: `<div class="sheet"><div class="sheet-tools"><span class="tag${g0.type === 'Selector' ? ' acc' : ''}">${esc(tEnum('gt', g0.type))}</span>
+      <a class="btn ghost sm" href="${esc(groupLink(name))}">${t('act.manage')}</a><button type="button" class="btn sm" data-sheet-test>${t('act.test')}</button></div><div class="nodes"></div></div>`,
+    onOpen: (body) => {
+      box = body.querySelector('.sheet');
+      draw();
+      box.addEventListener('click', async (ev) => {
+        if (ev.target.closest('a')) { modal.close(); return; }
+        if (ev.target.closest('[data-sheet-test]')) {
+          const done = testGroup(name);
+          draw();
+          await done;
+          draw();
+          return;
+        }
+        const node = ev.target.closest('.node');
+        if (node && !node.disabled) { modal.close(); selectNode(node.dataset.g, node.dataset.n); }
+      });
+    },
+  });
+}
+
+// quickTest tests the main group and names its fastest proxy (not DIRECT or a nested group)
+async function quickTest() {
+  const group = S.status?.proxy?.group;
+  if (!group || testing.has(group)) return;
+  if (!S.proxies) await loadProxies();
+  const r = await testGroup(group);
+  if (!r || r.error) return;
+  const nodes = (S.proxies?.groups || []).find((g) => g.name === group)?.nodes || [];
+  const real = new Set(nodes.filter((n) => !n.group && !/^(direct|reject)/i.test(n.type || '')).map((n) => n.name));
+  const [name, ms] = Object.entries(r.delays || {}).filter(([n, d]) => d > 0 && real.has(n)).sort((a, b) => a[1] - b[1])[0] || [];
+  toast(name ? t('toast.fastest', { name, ms }) : t('toast.testFailed', { err: t('node.timeout') }), !name);
+}
+
+// openBandSheet offers the bands; the choice is confirmed by switchBand like on the device page
+async function openBandSheet(btn) {
+  try { wifiData = await api('/api/wifi'); } catch (e) { fail(e); return; }
+  let pick = null;
+  await openModal({
+    title: t('qa.band'), ok: '', cancel: t('act.close'),
+    html: `<div class="sheet wifi-band">${bandSeg(wifiData)}<p class="note">${t('qa.bandNote')}</p>
+      <p><a class="btn ghost sm" href="#device/wifi">${t('act.manage')}</a></p></div>`,
+    onOpen: (body) => body.querySelector('.sheet').addEventListener('click', (ev) => {
+      if (ev.target.closest('a')) { modal.close(); return; }
+      const b = ev.target.closest('[data-wifi-band]');
+      if (!b || b.classList.contains('on')) return;
+      pick = b.dataset.wifiBand;
+      modal.close();
+    }),
+  });
+  if (pick !== null) switchBand(pick, btn);
+}
+
+const QUICK = {
+  node: () => openNodeSheet(),
+  test: () => quickTest(),
+  update: (b) => updateProviders(b, {}),
+  conns: () => openConnections(),
+  band: (b) => openBandSheet(b),
+  restart: (b) => restartProxy(b),
+  reboot: () => rebootDevice(),
+};
+$('#quick').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-qa]');
+  if (b && !b.disabled) QUICK[b.dataset.qa](b);
+});
+
 /* ---------- logs ---------- */
 
 const LOG_TITLES = { mihomo: 'tail -f /data/adb/box/run/clash.log', box: 'tail -f /data/adb/box/run/runs.log', glovebox: 'tail -f /data/adb/glovebox/glovebox.log', system: 'logcat -d *:W' };
@@ -1196,14 +1362,15 @@ function setLogSrc(src) {
   logText = '';
   $('#log').innerHTML = `<div class="l debug">${t('logs.loading')}</div>`;
 }
-function setFollow(on) {
+// setFollow turns follow mode on or off; turning it on reloads the log unless the caller is about to
+function setFollow(on, quiet) {
   follow = on;
   $('#log-follow').setAttribute('aria-pressed', String(on));
   $('#log-follow .tt').textContent = on ? 'FOLLOW' : 'PAUSED';
   const tn = $('#log-follow .tn');
   tn.dataset.i18n = on ? 'logs.follow' : 'logs.paused';
   tn.textContent = t(tn.dataset.i18n);
-  if (on) { $('#log').scrollTop = $('#log').scrollHeight; pageTick(); }
+  if (on) { $('#log').scrollTop = $('#log').scrollHeight; if (!quiet) pageTick(); }
 }
 $('#log-src').addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-src]');
@@ -1258,7 +1425,14 @@ async function statusTick() {
   if (loggedIn) statusTimer = setTimeout(statusTick, 2000);
 }
 
-const loaders = { overview: async () => { if (S.status) renderOverview(S.status); }, proxy: loadProxies, device: loadDevice, logs: loadLogs };
+const loaders = {
+  overview: async () => {
+    if (S.status) renderOverview(S.status);
+    // the status only says whether Wi-Fi is on; the band tile also names the band
+    if (!wifiData) api('/api/wifi').then((d) => { wifiData = d; if (S.status) renderQuick(S.status); }).catch(() => { /* the tile shows the SSID */ });
+  },
+  proxy: loadProxies, device: loadDevice, logs: loadLogs,
+};
 
 async function pageTick(first) {
   clearTimeout(pageTimer);
@@ -1270,8 +1444,10 @@ async function pageTick(first) {
   if (loggedIn && p === page && PAGE_EVERY[p]) pageTimer = setTimeout(() => pageTick(false), PAGE_EVERY[p]);
 }
 
-function setPage(p) {
+// setPage shows a page; a target (#proxy/<group>, #device/wifi, #logs/box …) is opened and scrolled to
+function setPage(p, target) {
   if (!PAGES.includes(p)) p = 'overview';
+  if (p !== page) window.scrollTo(0, 0);
   page = p;
   store.set('page', p);
   $$('[data-page]').forEach((a) => {
@@ -1287,13 +1463,57 @@ function setPage(p) {
   document.title = `${p} · Glovebox`;
   foldTitle();
   renderTmuxWins();
-  if (p === 'logs') { $('#log').dataset.user = '0'; }
-  pageTick(true);
+  if (p === 'logs') {
+    $('#log').dataset.user = '0';
+    if (LOG_TITLES[target]) {
+      if (target !== logSrc) setLogSrc(target);
+      if (!follow) setFollow(true, true);
+    }
+  }
+  if (p === 'proxy' && target) openGroups.add(target);
+  pageTick(true).then(() => { if (target && page === p) reveal(p, target); });
   if (p === 'overview') requestAnimationFrame(() => chart.resize());
 }
 
-function route() { setPage(location.hash.slice(1)); }
+// reveal scrolls to the part of a page a link points at and briefly highlights it
+let flashTimer = 0;
+function reveal(p, target) {
+  const el = p === 'proxy' ? $$('#groups .group').find((g) => g.dataset.group === target) : document.getElementById(target);
+  if (!el || !el.closest('#page-' + p)) return;
+  el.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  clearTimeout(flashTimer);
+  $$('.flash').forEach((x) => x.classList.remove('flash'));
+  void el.offsetWidth; // restart the animation
+  el.classList.add('flash');
+  flashTimer = setTimeout(() => el.classList.remove('flash'), 1300);
+}
+
+function route() {
+  const [p, ...rest] = location.hash.slice(1).split('/');
+  let target = rest.join('/');
+  try { target = decodeURIComponent(target); } catch { /* a malformed escape: use it as is */ }
+  setPage(p, target);
+}
 addEventListener('hashchange', route);
+
+// [data-go] turns a card into a link: '#page/target' navigates, a name runs that action
+const GO = { conns: () => openConnections() };
+function go(el) {
+  const to = el.dataset.go;
+  if (GO[to]) GO[to]();
+  else if (location.hash === to) route();
+  else location.hash = to;
+}
+document.addEventListener('click', (ev) => {
+  const a = ev.target.closest('a[href^="#"]');
+  // following a link to where the page already is reveals its target again
+  if (a) { if (a.getAttribute('href') === location.hash) route(); return; }
+  const el = ev.target.closest('[data-go]');
+  if (el && !ev.target.closest('button, input, select, textarea, label, summary')) go(el);
+});
+document.addEventListener('keydown', (ev) => {
+  if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches?.('[data-go]')) { ev.preventDefault(); go(ev.target); }
+});
 
 document.addEventListener('visibilitychange', () => {
   if (visible() && loggedIn) { statusTick(); pageTick(); }

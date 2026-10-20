@@ -10,7 +10,7 @@
   --bad: #ff3b30; --bad-rgb: 255, 59, 48;
   --a: #007aff; --a-rgb: 0, 122, 255;
   --b: #5856d6; --b-rgb: 88, 86, 214;
-  --orange: #ff6723;
+  --orange: #ff6723; --teal: #30b0c7; --gray: #8e8e93;
   --fill: rgba(118, 118, 128, .12); --fill-2: rgba(118, 118, 128, .2);
   --thumb: #ffffff; --chrome: rgba(249, 249, 249, .82);
   --panel: #ffffff; --side-bg: #f2f2f7; --top-bg: var(--chrome); --top-bg-app: var(--chrome); --tab-bg: var(--chrome);
@@ -34,7 +34,7 @@
   --bad: #ff453a; --bad-rgb: 255, 69, 58;
   --a: #0a84ff; --a-rgb: 10, 132, 255;
   --b: #5e5ce6; --b-rgb: 94, 92, 230;
-  --orange: #ff7a3d;
+  --orange: #ff7a3d; --teal: #40c8e0;
   --fill: rgba(118, 118, 128, .24); --fill-2: rgba(118, 118, 128, .36);
   --thumb: #ffffff; --chrome: rgba(22, 22, 23, .8);
   --panel: #1c1c1e; --side-bg: #000000; --tip-bg: #2c2c2e; --toast-bg: rgba(44, 44, 46, .86);
@@ -141,6 +141,31 @@
 
 [data-skin="ios"] .alert { border: 0; border-radius: 12px; background: rgba(var(--warn-rgb), .14); }
 
+/* cards that open something get a disclosure chevron and darken while pressed, like table cells */
+[data-skin="ios"] .panel[data-go] { transition: background .2s; }
+[data-skin="ios"] .panel[data-go]:active { background: var(--bg-3); transition: none; }
+[data-skin="ios"] .go-chev { width: 13px; height: 13px; stroke-width: 2.6; color: var(--fg-3); }
+[data-skin="ios"] [data-go]:hover .go-chev { color: var(--fg-2); transform: none; }
+[data-skin="ios"] a.hop:hover { background: var(--fill-2); }
+[data-skin="ios"] .checks a { text-decoration: none; }
+[data-skin="ios"] .flash { animation-name: ios-flash; }
+@keyframes ios-flash { 0%, 35% { box-shadow: 0 0 0 3px rgba(var(--a-rgb), .55); } 100% { box-shadow: 0 0 0 3px rgba(var(--a-rgb), 0); } }
+
+/* quick actions: Control Center style tiles with a coloured glyph */
+[data-skin="ios"] .qa { border: 0; border-radius: 14px; background: var(--fill); padding: 12px; gap: 10px; font-family: var(--font); }
+[data-skin="ios"] .qa:hover:not([disabled]) { background: var(--fill-2); border-color: transparent; }
+[data-skin="ios"] .qa:active:not([disabled]) { transform: none; opacity: .6; }
+[data-skin="ios"] .qa .ic { width: 32px; height: 32px; padding: 7px; border-radius: 50%; background: var(--qc, var(--a)); color: #fff; stroke-width: 2.1; }
+[data-skin="ios"] .qa[data-qa="test"] { --qc: var(--ok); }
+[data-skin="ios"] .qa[data-qa="update"] { --qc: var(--b); }
+[data-skin="ios"] .qa[data-qa="conns"] { --qc: var(--warn); }
+[data-skin="ios"] .qa[data-qa="band"] { --qc: var(--teal); }
+[data-skin="ios"] .qa[data-qa="restart"] { --qc: var(--gray); }
+[data-skin="ios"] .qa.danger { --qc: var(--bad); }
+[data-skin="ios"] .qa-tx b { font-size: .9rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
+[data-skin="ios"] .qa-st { font-size: .8rem; }
+[data-skin="ios"] .qa[disabled] { opacity: .4; }
+
 /* ---------- proxy ---------- */
 [data-skin="ios"] .toolbar { padding: 12px 16px; }
 [data-skin="ios"] .group .ph { padding-bottom: 13px; }
@@ -224,8 +249,9 @@
   [data-skin="ios"] { --tab-h: 50px; --top-h: 44px; --gap: 12px; }
   [data-skin="ios"] main { padding-left: calc(16px + var(--sa-l)); padding-right: calc(16px + var(--sa-r)); }
   [data-skin="ios"] .top { padding-left: calc(16px + var(--sa-l)); padding-right: calc(16px + var(--sa-r)); }
-  [data-skin="ios"] .top-brand { opacity: 0; transition: opacity .2s; }
-  [data-skin="ios"].scrolled .top-brand { opacity: 1; }
+  /* the status chips fill the bar's right half, so the folded title sits on the left instead of the middle */
+  [data-skin="ios"] .top-brand { display: none; }
+  [data-skin="ios"] .top-title { position: static; transform: none; flex: none; line-height: normal; }
   [data-skin="ios"] .chip { padding: 3px 8px; }
   [data-skin="ios"] .tabbar { background: var(--tab-bg); border-top: 1px solid var(--line-2); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); }
   [data-skin="ios"] .tabbar a { gap: 1px; padding-top: 2px; color: #8e8e93; font-size: .65rem; font-weight: 500; letter-spacing: 0; }
