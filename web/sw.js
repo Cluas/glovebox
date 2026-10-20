@@ -5,7 +5,7 @@
 
 const CACHE = 'glovebox-__BUILD__';
 const SHELL = [
-  '/', '/app.js', '/style.css', '/manifest.webmanifest',
+  '/', '/theme.js', '/app.js', '/style.css', '/skins/ios.css', '/skins/material.css', '/manifest.webmanifest',
   '/icons/icon.svg', '/icons/icon-192.png', '/icons/favicon-32.png',
   '/fonts/jetbrains-mono-400.woff2', '/fonts/jetbrains-mono-500.woff2', '/fonts/jetbrains-mono-700.woff2',
   '/i18n/index.json',

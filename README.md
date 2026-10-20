@@ -16,6 +16,9 @@ English · [简体中文](README.zh-CN.md)
   and `/proc`, `/sys` — the vendor UI and apps keep working.
 - **Installable app (PWA)** with a responsive layout for desktop, tablets, phones (portrait and
   landscape) and in-vehicle / embedded browsers. HTTPS via a generated, name-constrained local CA.
+- **Themes**: iOS and Material You looks that follow the system's light or dark mode, plus seven
+  terminal palettes. The first visit picks one for the device: iOS on iPhone and iPad, Material You
+  on Android, the terminal look elsewhere.
 - **Internationalized** (English, 简体中文); adding a language is adding one JSON file.
 - **Demo mode** runs the whole console on any computer with fake backends.
 
@@ -25,7 +28,7 @@ English · [简体中文](README.zh-CN.md)
 | --- | --- |
 | Overview | Live WAN throughput chart, signal (RSRP/SINR/band) with history, egress node and proxy chain, Tailscale reachability probe, monthly data usage, battery/CPU/memory/temperature gauges, connected clients, health checks and their events |
 | Proxy | mihomo groups and nodes, switch nodes, latency tests, rule/global/direct mode, update subscriptions and rule sets, live connections with filter and "close all" |
-| Device | Hotspot band (2.4 GHz or 5 GHz — the F50 runs one at a time) or off, SSID/password/visibility per band, max clients (up to the system limit), connected devices, alert and log shipping status, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme/language |
+| Device | Hotspot band (2.4 GHz or 5 GHz — the F50 runs one at a time) or off, SSID/password/visibility per band, max clients (up to the system limit), connected devices, alert and log shipping status, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme, light/dark and language |
 | Logs | mihomo, Box for Root, Glovebox and Android logcat — level filter, grep with highlight, follow/pause, wrap |
 
 Keyboard: `1`–`4` switch pages, `/` focuses the filter.
@@ -37,6 +40,9 @@ Keyboard: `1`–`4` switch pages, `/` focuses the filter.
 <p>
 <img src="docs/screenshots/en/device.png" width="66%" alt="Device">
 <img src="docs/screenshots/en/phone.png" width="22%" alt="Phone layout">
+</p>
+<p>
+<img src="docs/screenshots/en/themes.png" width="100%" alt="Themes: iOS light, iOS dark, Material You, Dracula">
 </p>
 
 ## Supported devices

@@ -74,6 +74,8 @@ function t(key, vars) {
 }
 // tEnum translates a backend code such as sim.NO_SIM; unknown values are shown as is
 const tEnum = (ns, v) => (v && has(`${ns}.${v}`) ? t(`${ns}.${v}`) : v);
+// dual renders a terminal label (ONLINE) next to its translated text; the skin shows one of them
+const dual = (term, key) => `<span class="tt">${term}</span><span class="tn">${esc(t(key))}</span>`;
 
 function applyI18n() {
   document.documentElement.lang = lang;
@@ -81,6 +83,7 @@ function applyI18n() {
   $$('[data-i18n-ph]').forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
   $('#lang-seg').innerHTML = Object.entries(locales).map(([code, name]) =>
     `<button type="button" data-lang-set="${esc(code)}" lang="${esc(code)}"${code === lang ? ' class="on"' : ''}>${esc(name)}</button>`).join('');
+  renderThemes();
 }
 
 /* ---------- formatting ---------- */
@@ -128,7 +131,7 @@ const delayText = (d) => (d > 0 ? d + ' ms' : d === 0 ? t('node.timeout') : '—
 // RSRP / SINR quality: 0 poor … 4 excellent
 const rsrpQ = (v) => (v == null ? null : v >= -80 ? 4 : v >= -90 ? 3 : v >= -100 ? 2 : v >= -110 ? 1 : 0);
 const sinrQ = (v) => (v == null ? null : v >= 20 ? 4 : v >= 13 ? 3 : v >= 5 ? 2 : v >= 0 ? 1 : 0);
-const Q_COLOR = ['var(--bad)', '#ff8f5c', 'var(--warn)', 'var(--ok)', 'var(--ok)'];
+const Q_COLOR = ['var(--bad)', 'var(--orange)', 'var(--warn)', 'var(--ok)', 'var(--ok)'];
 
 /* ---------- API ---------- */
 
@@ -317,7 +320,8 @@ class Chart {
     const X = (i, len) => padL + ((i + this.n - len) / (this.n - 1)) * W;
     const Y = (val) => padT + H - (val / max) * H;
 
-    ctx.font = '10px "JetBrains Mono", ui-monospace, monospace';
+    const glow = parseFloat(v('--glow')) || 0;
+    ctx.font = '10px ' + (v('--font-num') || 'monospace');
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
@@ -367,7 +371,7 @@ class Chart {
       ctx.lineWidth = 1.6;
       ctx.lineJoin = 'round';
       ctx.shadowColor = `rgba(${rgb}, .8)`;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 8 * glow;
       ctx.stroke();
       ctx.restore();
       // highlight the latest value
@@ -557,7 +561,7 @@ function renderOverview(s) {
   if (ts.enabled) {
     const st = K['ts.state'];
     st.className = 'big-state ' + (ts.online ? 'ok' : ts.checked ? 'bad' : '');
-    st.innerHTML = `<i class="dot ${ts.online ? 'ok' : ts.checked ? 'bad' : ''}"></i>${ts.online ? 'ONLINE' : ts.checked ? 'OFFLINE' : '…'}`;
+    st.innerHTML = `<i class="dot ${ts.online ? 'ok' : ts.checked ? 'bad' : ''}"></i>${ts.online ? dual('ONLINE', 'ts.online') : ts.checked ? dual('OFFLINE', 'ts.offline') : '…'}`;
     put('ts.delay', ts.online ? ts.delay + ' ms' : '—');
     put('ts.checked', ts.checked || t('ts.never'));
     put('ts.target', `${ts.name || ''} → ${ts.target || ''}`);
@@ -692,7 +696,7 @@ function renderReport() {
     };
     const errs = ['telegram', 'webhook', 'logs'].filter((k) => rep[k] && ch[k]?.error)
       .map((k) => `<p class="err small">${k}: ${esc(ch[k].error)}</p>`).join('');
-    html = `<dl class="stats c3">${cell('telegram', 'TELEGRAM')}${cell('webhook', 'WEBHOOK')}${cell('logs', 'LOGS')}</dl>${errs}`;
+    html = `<dl class="stats c3">${cell('telegram', dual('TELEGRAM', 'rep.telegram'))}${cell('webhook', dual('WEBHOOK', 'rep.webhook'))}${cell('logs', dual('LOGS', 'rep.logs'))}</dl>${errs}`;
   }
   const el = $('#report-body');
   if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
@@ -899,7 +903,7 @@ function renderWiFi(d) {
   // the F50 runs one band at a time, so the bands are a choice rather than two switches
   const bandBtn = (chip, label, sub) => `<button type="button" data-wifi-band="${esc(chip)}" class="${d.active === chip ? 'on' : ''}" aria-pressed="${d.active === chip}"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
   const band = `<article class="panel s12 wifi-band">
-    <header class="ph"><span class="pi">≋</span><h2>WLAN</h2><span class="sub">${t('wifi.bandSub')}</span><div class="pa"><span class="tag ${d.active ? 'ok' : ''}">${d.active ? 'ON' : 'OFF'}</span></div></header>
+    <header class="ph"><span class="pi">≋</span><h2><span class="tt">WLAN</span><span class="tn">${esc(t('ttl.wlan'))}</span></h2><span class="sub">${t('wifi.bandSub')}</span><div class="pa"><span class="tag ${d.active ? 'ok' : ''}">${d.active ? 'ON' : 'OFF'}</span></div></header>
     <div class="pb"><div class="seg">${aps.map((ap) => bandBtn(ap.chip, ap.band, ap.ssid)).join('')}${bandBtn('', 'OFF', '')}</div>
       <p class="note">${t('wifi.bandNote')}</p></div></article>`;
   $('#wifi').innerHTML = band + aps.map((ap) => {
@@ -907,7 +911,7 @@ function renderWiFi(d) {
     const opts = [];
     for (let i = 1; i <= Math.max(max, cur); i++) opts.push(`<option value="${i}"${i === cur ? ' selected' : ''}>${i}</option>`);
     return `<form class="panel wifi-form" data-chip="${esc(ap.chip)}" data-on="${ap.enabled ? 1 : 0}" data-max="${cur}">
-      <header class="ph"><span class="pi">${ap.chip === '1' ? '5G' : '2.4'}</span><h2>WLAN · ${esc(ap.band)}</h2><div class="pa"><span class="tag ${ap.enabled ? 'ok' : ''}">${ap.enabled ? 'ON' : 'OFF'}</span></div></header>
+      <header class="ph"><span class="pi">${ap.chip === '1' ? '5G' : '2.4'}</span><h2><span class="tt">WLAN · ${esc(ap.band)}</span><span class="tn">${esc(t('ttl.wlan'))} · ${esc(ap.band)}</span></h2><div class="pa"><span class="tag ${ap.enabled ? 'ok' : ''}">${ap.enabled ? 'ON' : 'OFF'}</span></div></header>
       <div class="pb">
         <label class="field"><span class="lbl">${t('wifi.ssid')}</span><input type="text" name="ssid" value="${esc(ap.ssid)}" maxlength="32" autocomplete="off" spellcheck="false"></label>
         <div class="field"><span class="lbl">${t('wifi.password')}</span><div class="pw-row">
@@ -1073,15 +1077,48 @@ $('#pw-form').addEventListener('submit', async (ev) => {
   } catch (e) { fail(e); }
 });
 
-/* interface preferences */
-function applyTheme(name) {
-  if (!['ice', 'phosphor', 'amber'].includes(name)) name = 'ice';
-  document.documentElement.dataset.theme = name;
-  store.set('theme', name);
-  $$('#theme-seg button').forEach((b) => b.classList.toggle('on', b.dataset.themeSet === name));
-  chart.draw();
+/* interface preferences: theme.js applies the theme before the first paint, this renders the picker */
+const TH = window.gloveboxTheme;
+const THEME_ORDER = ['auto', 'ios', 'material', 'ice', 'phosphor', 'amber', 'dracula', 'nord', 'gruvbox', 'solarized'];
+const THEME_NAMES = { ios: 'iOS', material: 'Material You', ice: 'ICE', phosphor: 'PHOSPHOR', amber: 'AMBER', dracula: 'Dracula', nord: 'Nord', gruvbox: 'Gruvbox', solarized: 'Solarized Light' };
+// picker previews: page, card, accent, second accent, corner radius; adaptive skins have a light and a dark set
+const THEME_PREVIEW = {
+  ice: { bg: '#05070a', card: '#0e141b', a: '#4fd8ff', b: '#b388ff' },
+  phosphor: { bg: '#05070a', card: '#0e141b', a: '#3dff8b', b: '#ffd84d' },
+  amber: { bg: '#05070a', card: '#0e141b', a: '#ffb547', b: '#ff7aa8' },
+  dracula: { bg: '#1e1f29', card: '#282a36', a: '#bd93f9', b: '#ff79c6' },
+  nord: { bg: '#242933', card: '#2e3440', a: '#88c0d0', b: '#b48ead' },
+  gruvbox: { bg: '#1d2021', card: '#282828', a: '#fabd2f', b: '#83a598' },
+  solarized: { bg: '#fdf6e3', card: '#eee8d5', a: '#268bd2', b: '#d33682' },
+  ios: { light: { bg: '#f2f2f7', card: '#ffffff', a: '#007aff', b: '#5856d6', r: '6px' }, dark: { bg: '#000000', card: '#1c1c1e', a: '#0a84ff', b: '#5e5ce6', r: '6px' } },
+  material: { light: { bg: '#fef7ff', card: '#f3edf7', a: '#6750a4', b: '#7d5260', r: '8px' }, dark: { bg: '#141218', card: '#211f26', a: '#d0bcff', b: '#efb8c8', r: '8px' } },
+};
+function renderThemes() {
+  const r = TH.resolve();
+  const adaptive = r.appearance !== 'auto' ? r.appearance : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  $('#theme-grid').innerHTML = THEME_ORDER.map((name) => {
+    const id = name === 'auto' ? TH.deviceTheme() : name;
+    const fixed = TH.THEMES[id].mode;
+    const c = fixed ? THEME_PREVIEW[id] : THEME_PREVIEW[id][adaptive];
+    const label = name === 'auto' ? t('theme.auto') : THEME_NAMES[name];
+    const sub = name === 'auto' ? THEME_NAMES[id] : fixed ? t('theme.terminal') : t('theme.adaptive');
+    const on = r.name === name;
+    return `<button type="button" class="theme-card${on ? ' on' : ''}" data-theme-set="${name}" role="radio" aria-checked="${on}"
+      style="--tp-bg:${c.bg};--tp-card:${c.card};--tp-a:${c.a};--tp-b:${c.b};--tp-r:${c.r || '0px'}"><span class="theme-prev" aria-hidden="true"><i></i><b></b><em></em></span><span>${esc(label)}</span><small>${esc(sub)}</small></button>`;
+  }).join('');
+  $$('#appear-seg button').forEach((b) => { b.classList.toggle('on', b.dataset.appear === r.appearance); b.disabled = r.fixedMode; });
+  $('#appear-note').hidden = !r.fixedMode;
+  $('#crt-field').hidden = r.skin !== 'terminal';
+  document.documentElement.classList.toggle('crt', r.skin === 'terminal' && $('#pref-crt').checked);
 }
-$('#theme-seg').addEventListener('click', (ev) => { const b = ev.target.closest('[data-theme-set]'); if (b) applyTheme(b.dataset.themeSet); });
+$('#theme-grid').addEventListener('click', (ev) => { const b = ev.target.closest('[data-theme-set]'); if (b) TH.choose(b.dataset.themeSet); });
+$('#appear-seg').addEventListener('click', (ev) => { const b = ev.target.closest('[data-appear]'); if (b && !b.disabled) TH.setAppearance(b.dataset.appear); });
+// theme.js fires this on a choice here and when the system switches between light and dark
+window.addEventListener('glovebox:theme', () => { renderThemes(); chart.draw(); });
+
+// iOS / Material: the page's large title folds into the top bar once it scrolls away
+function foldTitle() { document.documentElement.classList.toggle('scrolled', window.scrollY > 30); }
+window.addEventListener('scroll', foldTitle, { passive: true });
 $('#lang-seg').addEventListener('click', async (ev) => {
   const b = ev.target.closest('[data-lang-set]');
   if (!b) return;
@@ -1090,8 +1127,8 @@ $('#lang-seg').addEventListener('click', async (ev) => {
   renderAll();
 });
 $('#pref-crt').addEventListener('change', (ev) => {
-  document.documentElement.classList.toggle('crt', ev.target.checked);
   store.set('crt', ev.target.checked ? '1' : '0');
+  renderThemes();
 });
 
 /* ---------- logs ---------- */
@@ -1162,7 +1199,10 @@ function setLogSrc(src) {
 function setFollow(on) {
   follow = on;
   $('#log-follow').setAttribute('aria-pressed', String(on));
-  $('#log-follow span').textContent = on ? 'FOLLOW' : 'PAUSED';
+  $('#log-follow .tt').textContent = on ? 'FOLLOW' : 'PAUSED';
+  const tn = $('#log-follow .tn');
+  tn.dataset.i18n = on ? 'logs.follow' : 'logs.paused';
+  tn.textContent = t(tn.dataset.i18n);
   if (on) { $('#log').scrollTop = $('#log').scrollHeight; pageTick(); }
 }
 $('#log-src').addEventListener('click', (ev) => {
@@ -1241,7 +1281,11 @@ function setPage(p) {
   });
   $$('.page').forEach((s) => s.classList.toggle('on', s.id === 'page-' + p));
   $('#crumb').textContent = p;
+  const title = $('#top-title');
+  title.dataset.i18n = 'nav.' + p;
+  title.textContent = t('nav.' + p);
   document.title = `${p} · Glovebox`;
+  foldTitle();
   renderTmuxWins();
   if (p === 'logs') { $('#log').dataset.user = '0'; }
   pageTick(true);
@@ -1339,7 +1383,7 @@ async function boot() {
     const r = await api('/api/session');
     r.logged_in ? enterApp() : showLogin();
   } catch {
-    $('#gate-boot').innerHTML = `<span class="bad-t">[FAIL]</span> ${esc(t('gate.unreachable'))}<span class="caret"></span>`;
+    $('#gate-boot').innerHTML = `<span class="bad-t boot-tag">[FAIL]</span> ${esc(t('gate.unreachable'))}<span class="caret"></span>`;
     setTimeout(boot, 3000);
   }
 }
@@ -1349,9 +1393,8 @@ setInterval(() => {
   $('#clock').textContent = d.toTimeString().slice(0, 8);
 }, 1000);
 
-applyTheme(store.get('theme', 'ice'));
 $('#pref-crt').checked = store.get('crt', '0') === '1';
-document.documentElement.classList.toggle('crt', $('#pref-crt').checked);
+renderThemes();
 setLogSrc(logSrc);
 $$('#log-level button')[0].classList.add('on');
 renderTmuxWins();

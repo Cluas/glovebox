@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="ice">
+<html lang="en" data-theme="ice" data-skin="terminal" data-mode="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -17,7 +17,10 @@
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="preload" href="/fonts/jetbrains-mono-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/jetbrains-mono-700.woff2" as="font" type="font/woff2" crossorigin>
+<script src="/theme.js"></script>
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/skins/ios.css">
+<link rel="stylesheet" href="/skins/material.css">
 <title>Glovebox</title>
 </head>
 <body>
@@ -40,20 +43,21 @@
   <div class="term">
     <div class="term-bar"><i></i><i></i><i></i><span>glovebox — tty1</span></div>
     <div class="term-body">
+      <div class="gate-brand"><img src="/icons/icon.svg" alt="" width="72" height="72"><b>Glovebox</b></div>
 <pre class="logo" aria-label="Glovebox">  ___  _      ___  __   __ ___  ___   ___  __  __
  / __|| |    / _ \ \ \ / /| __|| _ ) / _ \ \ \/ /
 | (_ || |__ | (_) | \ V / | _| | _ \| (_) | &gt;  &lt;
  \___||____| \___/   \_/  |___||___/ \___/ /_/\_\</pre>
-      <p class="dim"><span data-i18n="gate.tagline">pocket router console</span> · <span id="gate-host"></span></p>
-      <div id="gate-boot" class="boot"><span class="dim">[ .... ]</span> <span data-i18n="gate.connecting">connecting to console</span><span class="caret"></span></div>
+      <p class="dim gate-sub"><span data-i18n="gate.tagline">pocket router console</span> · <span id="gate-host"></span></p>
+      <div id="gate-boot" class="boot"><span class="spinner" aria-hidden="true"></span><span class="dim boot-tag">[ .... ]</span> <span data-i18n="gate.connecting">connecting to console</span><span class="caret"></span></div>
       <form id="login-form" class="login" hidden autocomplete="on">
-        <p><span class="dim">glovebox login:</span> admin</p>
+        <p class="login-user"><span class="dim">glovebox login:</span> admin</p>
         <input type="text" name="username" value="admin" autocomplete="username" hidden>
         <label class="prompt"><span class="dim" data-i18n="gate.password">Password:</span>
           <input id="login-pw" type="password" autocomplete="current-password" required autofocus aria-label="Password">
         </label>
         <p id="login-err" class="err" role="alert"></p>
-        <button class="btn pri wide" type="submit"><span data-i18n="gate.enter">Log in</span> ⏎</button>
+        <button class="btn pri wide" type="submit"><span data-i18n="gate.enter">Log in</span><span class="tt"> ⏎</span></button>
       </form>
     </div>
   </div>
@@ -63,7 +67,7 @@
   <aside class="side">
     <a class="brand" href="#overview" aria-label="Glovebox">
       <img src="/icons/icon.svg" alt="" width="34" height="34">
-      <span class="brand-text"><b>GLOVEBOX</b><small id="side-host">root@glovebox</small></span>
+      <span class="brand-text"><b>Glovebox</b><small id="side-host">root@glovebox</small></span>
     </a>
     <nav class="nav" aria-label="Main">
       <a href="#overview" data-page="overview"><span class="ni">01</span><svg class="ic"><use href="#i-overview"/></svg><span class="nl"><b>OVERVIEW</b><small data-i18n="nav.overview">Overview</small></span></a>
@@ -85,6 +89,7 @@
   <header class="top">
     <a class="top-brand" href="#overview" aria-label="Glovebox"><img src="/icons/icon.svg" alt="" width="28" height="28"></a>
     <div class="crumb"><span class="dim">~/</span><span id="crumb">overview</span><span class="caret"></span></div>
+    <span class="top-title" id="top-title"></span>
     <div class="chips">
       <span class="chip" data-k="chip.cell"><i class="dot"></i><span>CELL</span><b>—</b></span>
       <span class="chip" data-k="chip.proxy"><i class="dot"></i><span>PROXY</span><b>—</b></span>
@@ -97,6 +102,7 @@
   <main id="main">
     <!-- ============ overview ============ -->
     <section class="page" id="page-overview" aria-labelledby="crumb">
+      <h1 class="large-title" data-i18n="nav.overview">Overview</h1>
       <div class="alert" id="skew" hidden>
         <span class="tag warn">WARN</span>
         <span><b>CLOCK SKEW</b> · <span id="skew-text"></span></span>
@@ -104,37 +110,37 @@
       </div>
       <div class="grid">
         <article class="panel kpi s3" data-k="kpi.down.panel">
-          <header class="ph"><span class="pi">↓</span><h2>DOWNLINK</h2><span class="sub" data-i18n="kpi.down">Downlink</span></header>
+          <header class="ph"><span class="pi">↓</span><h2><span class="tt">DOWNLINK</span><span class="tn" data-i18n="kpi.down">Downlink</span></h2><span class="sub" data-i18n="kpi.down">Downlink</span></header>
           <div class="pb"><div class="val"><span data-k="kpi.down">—</span><small data-k="kpi.down.u">Mbps</small></div>
-            <div class="kpi-meta"><span>PEAK <b data-k="kpi.down.peak">—</b></span><span>AVG <b data-k="kpi.down.avg">—</b></span></div>
+            <div class="kpi-meta"><span><span class="tt">PEAK</span><span class="tn" data-i18n="kpi.peak">Peak</span> <b data-k="kpi.down.peak">—</b></span><span><span class="tt">AVG</span><span class="tn" data-i18n="kpi.avg">Avg</span> <b data-k="kpi.down.avg">—</b></span></div>
             <svg class="spark" data-k="kpi.down.spark" viewBox="0 0 120 32" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg></div>
         </article>
         <article class="panel kpi s3 alt">
-          <header class="ph"><span class="pi">↑</span><h2>UPLINK</h2><span class="sub" data-i18n="kpi.up">Uplink</span></header>
+          <header class="ph"><span class="pi">↑</span><h2><span class="tt">UPLINK</span><span class="tn" data-i18n="kpi.up">Uplink</span></h2><span class="sub" data-i18n="kpi.up">Uplink</span></header>
           <div class="pb"><div class="val"><span data-k="kpi.up">—</span><small data-k="kpi.up.u">Mbps</small></div>
-            <div class="kpi-meta"><span>PEAK <b data-k="kpi.up.peak">—</b></span><span>AVG <b data-k="kpi.up.avg">—</b></span></div>
+            <div class="kpi-meta"><span><span class="tt">PEAK</span><span class="tn" data-i18n="kpi.peak">Peak</span> <b data-k="kpi.up.peak">—</b></span><span><span class="tt">AVG</span><span class="tn" data-i18n="kpi.avg">Avg</span> <b data-k="kpi.up.avg">—</b></span></div>
             <svg class="spark" data-k="kpi.up.spark" viewBox="0 0 120 32" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg></div>
         </article>
         <article class="panel kpi s3">
-          <header class="ph"><span class="pi">◢</span><h2>SIGNAL</h2><span class="sub" data-i18n="kpi.signal">Signal</span></header>
+          <header class="ph"><span class="pi">◢</span><h2><span class="tt">SIGNAL</span><span class="tn" data-i18n="kpi.signal">Signal</span></h2><span class="sub" data-i18n="kpi.signal">Signal</span></header>
           <div class="pb"><div class="val"><span data-k="kpi.rsrp">—</span><small>dBm</small><span class="bars" data-k="kpi.bars"><i></i><i></i><i></i><i></i><i></i></span></div>
             <div class="kpi-meta"><span data-k="kpi.net">—</span><span>SINR <b data-k="kpi.sinr">—</b></span></div>
             <svg class="spark" data-k="kpi.sig.spark" viewBox="0 0 120 32" preserveAspectRatio="none"><path class="area"/><path class="line"/></svg></div>
         </article>
         <article class="panel kpi s3">
-          <header class="ph"><span class="pi">◎</span><h2>EGRESS</h2><span class="sub" data-i18n="kpi.egress">Egress</span></header>
+          <header class="ph"><span class="pi">◎</span><h2><span class="tt">EGRESS</span><span class="tn" data-i18n="kpi.egress">Egress</span></h2><span class="sub" data-i18n="kpi.egress">Egress</span></header>
           <div class="pb"><div class="val val-text" data-k="kpi.node">—</div>
             <div class="kpi-meta"><span data-k="kpi.chain" class="ell">—</span></div>
-            <div class="kpi-meta"><span class="tag" data-k="kpi.mode">—</span><span><b data-k="kpi.conns">—</b> CONNS</span></div></div>
+            <div class="kpi-meta"><span class="tag" data-k="kpi.mode">—</span><span><b data-k="kpi.conns">—</b> <span class="tt">CONNS</span><span class="tn" data-i18n="kpi.conns">connections</span></span></div></div>
         </article>
 
         <article class="panel s8 m-full">
-          <header class="ph"><span class="pi">01</span><h2>THROUGHPUT</h2><span class="sub" data-i18n="p.throughput">live · last 3 min</span>
+          <header class="ph"><span class="pi">01</span><h2><span class="tt">THROUGHPUT</span><span class="tn" data-i18n="ttl.throughput">Throughput</span></h2><span class="sub" data-i18n="p.throughput">live · last 3 min</span>
             <div class="pa legend"><span class="lg a">WAN ↓</span><span class="lg b">WAN ↑</span></div></header>
           <div class="pb chart-wrap"><canvas id="chart" aria-label="throughput chart"></canvas><div class="chart-tip" id="chart-tip" hidden></div></div>
         </article>
         <article class="panel s4 m-full">
-          <header class="ph"><span class="pi">02</span><h2>CELLULAR</h2><span class="sub" data-i18n="p.cell">mobile network</span><div class="pa"><span class="tag" data-k="cell.state">—</span></div></header>
+          <header class="ph"><span class="pi">02</span><h2><span class="tt">CELLULAR</span><span class="tn" data-i18n="ttl.cell">Cellular</span></h2><span class="sub" data-i18n="p.cell">mobile network</span><div class="pa"><span class="tag" data-k="cell.state">—</span></div></header>
           <div class="pb">
             <p class="err" data-k="cell.err" hidden></p>
             <dl class="kv">
@@ -151,20 +157,20 @@
         </article>
 
         <article class="panel s6 m-full">
-          <header class="ph"><span class="pi">03</span><h2>ROUTE</h2><span class="sub" data-i18n="p.route">traffic path</span><div class="pa"><a class="btn ghost sm" href="#proxy" data-i18n="act.manage">Manage</a></div></header>
+          <header class="ph"><span class="pi">03</span><h2><span class="tt">ROUTE</span><span class="tn" data-i18n="ttl.route">Route</span></h2><span class="sub" data-i18n="p.route">traffic path</span><div class="pa"><a class="btn ghost sm" href="#proxy" data-i18n="act.manage">Manage</a></div></header>
           <div class="pb">
             <p class="err" data-k="route.err" hidden></p>
             <ol class="route" data-k="route.chain"></ol>
             <dl class="stats">
-              <div><dt>CONNS</dt><dd data-k="route.conns">—</dd></div>
+              <div><dt><span class="tt">CONNS</span><span class="tn" data-i18n="route.conns">Connections</span></dt><dd data-k="route.conns">—</dd></div>
               <div><dt data-i18n="route.down">Proxied ↓</dt><dd data-k="route.down">—</dd></div>
               <div><dt data-i18n="route.up">Proxied ↑</dt><dd data-k="route.up">—</dd></div>
-              <div><dt>CORE</dt><dd data-k="route.core">—</dd></div>
+              <div><dt><span class="tt">CORE</span><span class="tn" data-i18n="route.core">Core</span></dt><dd data-k="route.core">—</dd></div>
             </dl>
           </div>
         </article>
         <article class="panel s3 m-half">
-          <header class="ph"><span class="pi">04</span><h2>TAILNET</h2></header>
+          <header class="ph"><span class="pi">04</span><h2><span class="tt">TAILNET</span><span class="tn" data-i18n="ttl.tailnet">Tailnet</span></h2></header>
           <div class="pb ts">
             <div class="ts-off" data-k="ts.off" hidden><p class="dim" data-i18n="ts.off">Not configured. Set tailscale_proxy and tailscale_probe in config.json to enable.</p></div>
             <div data-k="ts.on">
@@ -179,7 +185,7 @@
           </div>
         </article>
         <article class="panel s3 m-half">
-          <header class="ph"><span class="pi">05</span><h2>USAGE</h2><span class="sub" data-i18n="p.usage">data</span></header>
+          <header class="ph"><span class="pi">05</span><h2><span class="tt">USAGE</span><span class="tn" data-i18n="ttl.usage">Data usage</span></h2><span class="sub" data-i18n="p.usage">data</span></header>
           <div class="pb">
             <div class="usage"><span class="dim" data-i18n="usage.month">This month · cellular</span><b data-k="use.month">—</b>
               <div class="split"><i class="a" data-k="use.rxbar"></i><i class="b"></i></div>
@@ -190,13 +196,13 @@
         </article>
 
         <article class="panel s6 m-full">
-          <header class="ph"><span class="pi">06</span><h2>SYSTEM</h2><span class="sub" data-i18n="p.system">device</span><div class="pa"><span class="tag" data-k="sys.power">—</span></div></header>
+          <header class="ph"><span class="pi">06</span><h2><span class="tt">SYSTEM</span><span class="tn" data-i18n="ttl.system">System</span></h2><span class="sub" data-i18n="p.system">device</span><div class="pa"><span class="tag" data-k="sys.power">—</span></div></header>
           <div class="pb">
             <div class="gauges">
-              <figure class="gauge" data-k="g.bat"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span>BAT</span></figcaption></figure>
+              <figure class="gauge" data-k="g.bat"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span><span class="tt">BAT</span><span class="tn" data-i18n="g.bat">Battery</span></span></figcaption></figure>
               <figure class="gauge" data-k="g.cpu"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span>CPU</span></figcaption></figure>
-              <figure class="gauge" data-k="g.mem"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span>MEM</span></figcaption></figure>
-              <figure class="gauge" data-k="g.temp"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span>TEMP</span></figcaption></figure>
+              <figure class="gauge" data-k="g.mem"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span><span class="tt">MEM</span><span class="tn" data-i18n="g.mem">Memory</span></span></figcaption></figure>
+              <figure class="gauge" data-k="g.temp"><svg viewBox="0 0 80 80"><circle class="tr" cx="40" cy="40" r="33"/><circle class="fg" cx="40" cy="40" r="33"/></svg><figcaption><b>—</b><span><span class="tt">TEMP</span><span class="tn" data-i18n="g.temp">Temp</span></span></figcaption></figure>
             </div>
             <dl class="kv cols">
               <dt data-i18n="sys.uptime">Uptime</dt><dd data-k="sys.uptime">—</dd>
@@ -209,11 +215,11 @@
           </div>
         </article>
         <article class="panel s6 m-full">
-          <header class="ph"><span class="pi">07</span><h2>CLIENTS</h2><span class="sub" data-i18n="p.clients">connected devices</span><div class="pa"><span class="tag" data-k="clients.count">0</span></div></header>
+          <header class="ph"><span class="pi">07</span><h2><span class="tt">CLIENTS</span><span class="tn" data-i18n="ttl.clients">Clients</span></h2><span class="sub" data-i18n="p.clients">connected devices</span><div class="pa"><span class="tag" data-k="clients.count">0</span></div></header>
           <div class="pb flush"><div class="table-wrap" data-k="clients.table"></div></div>
         </article>
         <article class="panel s12" id="health">
-          <header class="ph"><span class="pi">08</span><h2>HEALTH</h2><span class="sub" data-i18n="p.health">checks &amp; events</span><div class="pa"><span class="tag" data-k="hc.summary">—</span></div></header>
+          <header class="ph"><span class="pi">08</span><h2><span class="tt">HEALTH</span><span class="tn" data-i18n="ttl.health">Health</span></h2><span class="sub" data-i18n="p.health">checks &amp; events</span><div class="pa"><span class="tag" data-k="hc.summary">—</span></div></header>
           <div class="pb hc-checks"><ul class="checks" data-k="hc.checks"></ul><div data-k="hc.errs"></div></div>
           <div class="pb flush"><div class="table-wrap" data-k="hc.events"></div></div>
         </article>
@@ -222,6 +228,7 @@
 
     <!-- ============ proxy ============ -->
     <section class="page" id="page-proxy" aria-labelledby="crumb">
+      <h1 class="large-title" data-i18n="nav.proxy">Proxy</h1>
       <div class="toolbar panel">
         <div class="seg" id="mode" role="group" aria-label="mode">
           <button data-mode="rule"><b>RULE</b><small data-i18n="mode.rule">Rule</small></button>
@@ -237,48 +244,50 @@
       <p class="err panel pad" id="proxy-err" hidden></p>
       <div id="groups" class="groups"></div>
       <article class="panel">
-        <header class="ph"><span class="pi">◇</span><h2>PROVIDERS</h2><span class="sub" data-i18n="p.providers">subscriptions &amp; rule sets</span></header>
+        <header class="ph"><span class="pi">◇</span><h2><span class="tt">PROVIDERS</span><span class="tn" data-i18n="ttl.providers">Providers</span></h2><span class="sub" data-i18n="p.providers">subscriptions &amp; rule sets</span></header>
         <div class="pb flush"><div class="table-wrap" id="providers"></div></div>
       </article>
     </section>
 
     <!-- ============ device ============ -->
     <section class="page" id="page-device" aria-labelledby="crumb">
+      <h1 class="large-title" data-i18n="nav.device">Device</h1>
       <div class="grid">
         <div class="s12 wifi-grid" id="wifi"><article class="panel"><div class="pb dim" data-i18n="logs.loading">loading…</div></article></div>
 
         <article class="panel s12">
-          <header class="ph"><span class="pi">◎</span><h2>CLIENTS</h2><span class="sub" data-i18n="p.clients">connected devices</span><div class="pa"><span class="tag" data-k="clients.count2">0</span></div></header>
+          <header class="ph"><span class="pi">◎</span><h2><span class="tt">CLIENTS</span><span class="tn" data-i18n="ttl.clients">Clients</span></h2><span class="sub" data-i18n="p.clients">connected devices</span><div class="pa"><span class="tag" data-k="clients.count2">0</span></div></header>
           <div class="pb flush"><div class="table-wrap" data-k="clients.table2"></div></div>
         </article>
 
         <article class="panel s12" id="report">
-          <header class="ph"><span class="pi">✉</span><h2>REPORTING</h2><span class="sub" data-i18n="p.report">alerts &amp; log shipping</span><div class="pa"><button class="btn sm" data-report-test hidden><span data-i18n="rep.test">Send test</span></button></div></header>
+          <header class="ph"><span class="pi">✉</span><h2><span class="tt">REPORTING</span><span class="tn" data-i18n="ttl.report">Reporting</span></h2><span class="sub" data-i18n="p.report">alerts &amp; log shipping</span><div class="pa"><button class="btn sm" data-report-test hidden><span data-i18n="rep.test">Send test</span></button></div></header>
           <div class="pb" id="report-body"></div>
         </article>
 
         <article class="panel s6 m-full" id="secure">
-          <header class="ph"><span class="pi"><svg class="ic"><use href="#i-lock"/></svg></span><h2>HTTPS · APP</h2><span class="sub" data-i18n="p.secure">secure access &amp; install</span></header>
+          <header class="ph"><span class="pi"><svg class="ic"><use href="#i-lock"/></svg></span><h2><span class="tt">HTTPS · APP</span><span class="tn" data-i18n="ttl.secure">HTTPS & app</span></h2><span class="sub" data-i18n="p.secure">secure access &amp; install</span></header>
           <div class="pb" id="secure-body"></div>
         </article>
 
         <article class="panel s6 m-full">
-          <header class="ph"><span class="pi">⚙</span><h2>PREFERENCES</h2><span class="sub" data-i18n="p.prefs">interface</span></header>
+          <header class="ph"><span class="pi">⚙</span><h2><span class="tt">PREFERENCES</span><span class="tn" data-i18n="ttl.prefs">Preferences</span></h2><span class="sub" data-i18n="p.prefs">interface</span></header>
           <div class="pb form">
             <div class="field"><span class="lbl" data-i18n="pref.theme">Theme</span>
-              <div class="seg swatches" id="theme-seg">
-                <button data-theme-set="ice"><i style="--c:#4fd8ff"></i>ICE</button>
-                <button data-theme-set="phosphor"><i style="--c:#3dff8b"></i>PHOSPHOR</button>
-                <button data-theme-set="amber"><i style="--c:#ffb547"></i>AMBER</button>
-              </div></div>
+              <div class="themes" id="theme-grid" role="radiogroup"></div></div>
+            <div class="field"><span class="lbl" data-i18n="pref.appearance">Appearance</span>
+              <div class="seg" id="appear-seg" role="group">
+                <button data-appear="auto" data-i18n="appear.auto">Auto</button><button data-appear="light" data-i18n="appear.light">Light</button><button data-appear="dark" data-i18n="appear.dark">Dark</button>
+              </div>
+              <p class="note" id="appear-note" data-i18n="theme.fixed" hidden>This palette has a fixed light or dark look.</p></div>
             <div class="field"><span class="lbl" data-i18n="pref.lang">Language</span>
               <div class="seg" id="lang-seg"></div></div>
-            <label class="field switch"><span class="lbl" data-i18n="pref.crt">CRT scanlines</span><input type="checkbox" id="pref-crt"><span class="sw" aria-hidden="true"></span></label>
+            <label class="field switch" id="crt-field"><span class="lbl" data-i18n="pref.crt">CRT scanlines</span><input type="checkbox" id="pref-crt"><span class="sw" aria-hidden="true"></span></label>
           </div>
         </article>
 
         <article class="panel s6 m-full">
-          <header class="ph"><span class="pi">⏻</span><h2>MAINTENANCE</h2><span class="sub" data-i18n="p.maint">maintenance</span></header>
+          <header class="ph"><span class="pi">⏻</span><h2><span class="tt">MAINTENANCE</span><span class="tn" data-i18n="ttl.maint">Maintenance</span></h2><span class="sub" data-i18n="p.maint">maintenance</span></header>
           <div class="pb actions">
             <button class="btn" id="btn-box-restart"><svg class="ic"><use href="#i-refresh"/></svg><span data-i18n="act.restartProxy">Restart proxy</span></button>
             <button class="btn" data-sync-time><span data-i18n="act.syncTime">Sync clock from this device</span></button>
@@ -288,7 +297,7 @@
         </article>
 
         <article class="panel s6 m-full">
-          <header class="ph"><span class="pi">#</span><h2>PASSWORD</h2><span class="sub" data-i18n="p.password">console password</span></header>
+          <header class="ph"><span class="pi">#</span><h2><span class="tt">PASSWORD</span><span class="tn" data-i18n="ttl.password">Password</span></h2><span class="sub" data-i18n="p.password">console password</span></header>
           <form class="pb form" id="pw-form">
             <input type="text" name="username" value="admin" autocomplete="username" hidden>
             <label class="field"><span class="lbl" data-i18n="pw.old">Current password</span><input type="password" id="pw-old" autocomplete="current-password" required></label>
@@ -302,6 +311,7 @@
 
     <!-- ============ logs ============ -->
     <section class="page" id="page-logs" aria-labelledby="crumb">
+      <h1 class="large-title" data-i18n="nav.logs">Logs</h1>
       <div class="term logterm">
         <div class="term-bar"><i></i><i></i><i></i><span id="log-title">tail -f clash.log</span></div>
         <div class="log-tools">
@@ -312,8 +322,8 @@
             <button data-level="all">ALL</button><button data-level="info">INFO</button><button data-level="warn">WARN</button><button data-level="error">ERR</button>
           </div>
           <label class="search"><svg class="ic"><use href="#i-search"/></svg><input id="log-filter" type="search" data-i18n-ph="logs.filter" placeholder="grep…  /" autocomplete="off"></label>
-          <button class="btn" id="log-follow" aria-pressed="true"><i class="dot ok"></i><span>FOLLOW</span></button>
-          <button class="btn" id="log-wrap" aria-pressed="false">WRAP</button>
+          <button class="btn" id="log-follow" aria-pressed="true"><i class="dot ok"></i><span class="tt">FOLLOW</span><span class="tn" data-i18n="logs.follow">Follow</span></button>
+          <button class="btn" id="log-wrap" aria-pressed="false"><span class="tt">WRAP</span><span class="tn" data-i18n="logs.wrap">Wrap</span></button>
         </div>
         <div class="log" id="log" tabindex="0" aria-live="off"></div>
       </div>
