@@ -87,6 +87,7 @@ func TestDiagJobVerify(t *testing.T) {
 		"loopback":        {with(func(j *diagJob) { j.Probes[1].URL = "http://127.0.0.1:9091/configs" }), "off limits"},
 		"localhost":       {with(func(j *diagJob) { j.Probes[1].URL = "http://localhost/" }), "off limits"},
 		"link-local":      {with(func(j *diagJob) { j.Probes[1].URL = "http://[fe80::1]/" }), "off limits"},
+		"local name":      {with(func(j *diagJob) { j.Probes[1].URL = "https://glovebox.lan/api/info" }), "off limits"},
 		"not http":        {with(func(j *diagJob) { j.Probes[1].URL = "file:///etc/passwd" }), "http(s)"},
 		"dns type":        {with(func(j *diagJob) { j.Probes[0].Type = "TXT" }), "type"},
 		"log level":       {with(func(j *diagJob) { j.Probes[0] = diagProbe{Kind: "log", Level: "silent"} }), "level"},
@@ -298,6 +299,29 @@ func TestDiagPollRunsEachJobOnce(t *testing.T) {
 	e.poll()
 	if in := e.d.info(); !strings.Contains(in.Error, "signature") || len(e.results()) != 6 {
 		t.Errorf("foreign job: %q", in.Error)
+	}
+}
+
+func TestDiagHTTPProbeStaysOffTheDevice(t *testing.T) {
+	e := newDiagEnv(t)
+	c := e.cfg.get()
+	c.Hostnames = []string{"console.example"}
+	// the address the fake resolver gives this name, as if it pointed at the device
+	alias := fakeDNSAnswer("me.example", "A")["Answer"].([]any)[0].(map[string]any)["data"].(string)
+	e.d.addrs = func() []net.IP { return []net.IP{net.ParseIP("192.168.0.254"), net.ParseIP(alias)} }
+	for _, u := range []string{
+		"http://192.168.0.254/api/info",                         // an interface address
+		"http://192.168.0.1:8080/goform/goform_get_cmd_process", // the vendor web interface
+		"https://console.example/",                              // a console hostname
+		"https://me.example/",                                   // a name that resolves to the device
+	} {
+		r := e.d.probe(context.Background(), c, diagProbe{Kind: "http", URL: u})[0]
+		if r.OK || !strings.Contains(r.Error, "off limits") {
+			t.Errorf("%s: %+v", u, r)
+		}
+	}
+	if r := e.d.probe(context.Background(), c, diagProbe{Kind: "http", URL: "http://www.youtube.com/generate_204"})[0]; !r.OK {
+		t.Errorf("a public site was refused: %+v", r)
 	}
 }
 

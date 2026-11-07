@@ -248,8 +248,9 @@ go run . diag sign -key update-signing.key -device car -ttl 30m -in probes.json 
 curl http://192.0.2.10:9428/select/logsql/query --data-urlencode 'query=_time:1h source:diag job_id:"<id>"'
 ```
 
-`-id` 是任务名（默认是当前时间），同一个 id 每台设备只执行一次。任务不能执行命令，`http` 拒绝回环和
-链路本地地址，所以碰不到控制台、mihomo 接口和原厂网页。任务唯一能改动的是临时的日志级别。注意
+`-id` 是任务名（默认是当前时间），同一个 id 每台设备只执行一次。任务不能执行命令，`http` 拒绝设备自己的
+地址（回环、链路本地、本机网卡地址、原厂网页和控制台域名，域名解析到这些地址也算）以及 `.lan` / `.local`
+域名，所以碰不到控制台、mihomo 接口和原厂网页。任务唯一能改动的是临时的日志级别。注意
 `connections` 和 `log` 会把热点设备访问的网站域名传到你的日志服务器。
 
 ## 工作原理

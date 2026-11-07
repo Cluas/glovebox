@@ -165,20 +165,84 @@ func (p diagProbe) qtype() string {
 }
 
 // checkProbeURL keeps requests off the device itself: its own APIs (mihomo, the vendor web
-// interface) answer on loopback and link-local addresses
+// interface, the console) answer on loopback, link-local and LAN addresses, and on local names.
+// This is the part that holds on any machine; offDevice adds the device's own addresses.
 func checkProbeURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return fmt.Errorf("url %q: want an http(s) URL", raw)
 	}
 	h := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
-	if h == "localhost" || strings.HasSuffix(h, ".localhost") {
-		return fmt.Errorf("url %q: the device itself is off limits", raw)
+	for _, sfx := range []string{"localhost", "lan", "local", "home.arpa"} {
+		if h == sfx || strings.HasSuffix(h, "."+sfx) {
+			return fmt.Errorf("url %q: the device itself is off limits", raw)
+		}
 	}
-	if ip := net.ParseIP(h); ip != nil && (ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()) {
+	if ip := net.ParseIP(h); ip != nil && localIP(ip) {
 		return fmt.Errorf("url %q: the device itself is off limits", raw)
 	}
 	return nil
+}
+
+func localIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()
+}
+
+// offDevice refuses a URL whose host is one of the device's own addresses, the vendor web
+// interface or the console, also when a name resolves to one
+func (d *diagnoser) offDevice(ctx context.Context, c Config, raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return err
+	}
+	h := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	refuse := fmt.Errorf("url %q: the device itself is off limits", raw)
+	for _, n := range c.Hostnames {
+		if strings.EqualFold(h, n) {
+			return refuse
+		}
+	}
+	if zu, err := url.Parse(c.ZTEBase); err == nil && strings.EqualFold(h, zu.Hostname()) {
+		return refuse
+	}
+	ips := []string{h}
+	if net.ParseIP(h) == nil {
+		ips = nil
+		for _, qt := range []string{"A", "AAAA"} {
+			if _, ans, err := d.mihomo.dnsLookup(ctx, h, qt); err == nil {
+				ips = append(ips, ans...)
+			}
+		}
+	}
+	own := d.ownAddrs()
+	for _, s := range ips {
+		ip := net.ParseIP(s)
+		if ip == nil {
+			continue
+		}
+		if localIP(ip) || slices.ContainsFunc(own, ip.Equal) {
+			return refuse
+		}
+	}
+	return nil
+}
+
+// ownAddrs lists the addresses of the device's interfaces
+func (d *diagnoser) ownAddrs() []net.IP {
+	if d.addrs != nil {
+		return d.addrs()
+	}
+	as, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var ips []net.IP
+	for _, a := range as {
+		if n, ok := a.(*net.IPNet); ok {
+			ips = append(ips, n.IP)
+		}
+	}
+	return ips
 }
 
 // diagResult is one line of diag.log. time comes first: the shipper stamps lines with it.
@@ -218,7 +282,8 @@ type diagnoser struct {
 	mihomo  *mihomoClient
 	out     *outbound
 	keys    func(Config) []ed25519.PublicKey
-	dir     string // <data dir>/diag; empty keeps no state
+	addrs   func() []net.IP // the device's own addresses; nil asks the system
+	dir     string          // <data dir>/diag; empty keeps no state
 	logw    io.Writer
 	shipNow func()
 
@@ -481,7 +546,7 @@ func (d *diagnoser) probe(ctx context.Context, c Config, p diagProbe) []diagResu
 	case "dns":
 		err = d.probeDNS(ctx, c, p, &r)
 	case "http":
-		err = d.probeHTTP(ctx, p, &r)
+		err = d.probeHTTP(ctx, c, p, &r)
 	case "delay":
 		err = d.probeDelay(ctx, c, p, &r)
 	case "proxies":
@@ -606,7 +671,7 @@ type diagHop struct {
 
 // probeHTTP requests the URL through mihomo's mixed port, so it takes the rules a hotspot client
 // would; the connection is found in /connections by its local port to name the rule and proxy
-func (d *diagnoser) probeHTTP(ctx context.Context, p diagProbe, r *diagResult) error {
+func (d *diagnoser) probeHTTP(ctx context.Context, c Config, p diagProbe, r *diagResult) error {
 	cfg, err := d.mihomo.configs(ctx)
 	if err != nil {
 		return fmt.Errorf("mihomo: %w", err)
@@ -646,6 +711,9 @@ func (d *diagnoser) probeHTTP(ctx context.Context, p diagProbe, r *diagResult) e
 			if err := checkProbeURL(next); err != nil {
 				return err
 			}
+		}
+		if err := d.offDevice(ctx, c, next); err != nil {
+			return err
 		}
 		hop := d.hop(ctx, hc, p, next, &local)
 		hops = append(hops, hop)

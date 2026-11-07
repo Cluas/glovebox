@@ -280,8 +280,9 @@ curl http://192.0.2.10:9428/select/logsql/query --data-urlencode 'query=_time:1h
 ```
 
 `-id` names the job (default: the current time); a device runs each id once. Jobs cannot run
-commands, and `http` refuses loopback and link-local addresses, which keeps the console, mihomo's
-API and the vendor interface out of reach. The only change a job can make is the temporary log
+commands, and `http` refuses the device's own addresses (loopback, link-local, its interface
+addresses, the vendor interface and the console hostnames, also when a name resolves to one) and
+`.lan` / `.local` names, which keeps the console, mihomo's API and the vendor interface out of reach. The only change a job can make is the temporary log
 level. Keep in mind that `connections` and `log` send the names of the sites your hotspot clients
 visit to your log server.
 
