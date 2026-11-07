@@ -17,6 +17,7 @@ var zteStatusFields = []string{
 	"rssi", "lte_rsrp", "lte_snr", "Z5g_rsrp", "Z5g_SINR", "Z5g_snr",
 	"wan_active_band", "nr5g_action_band", "lte_ca_pcell_band", "wan_ipaddr",
 	"cr_version", "wa_inner_version",
+	"sms_unread_num", "sim_msisdn",
 }
 
 // zteStatus is cached for 2 seconds so several open pages don't overload the vendor service
@@ -214,6 +215,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		out["client_list"] = cl
 		out["wifi"] = map[string]any{"on": str(z["wifi_onoff_state"]) == "1", "ssid": str(z["SSID1"])}
 		out["firmware"] = str(z["wa_inner_version"])
+		out["sms_unread"] = num(z["sms_unread_num"])
 	}
 
 	out["rates"] = s.net.rates()

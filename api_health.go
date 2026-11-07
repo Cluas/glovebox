@@ -14,10 +14,15 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	ch["logs"] = s.ship.status()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"checks":   s.health.snapshot(),
-		"events":   s.events.recent(50),
+		"events":   healthEvents(s.events.recent(50)),
 		"channels": ch,
 		"seq":      s.events.lastSeq(),
 	})
+}
+
+// healthEvents leaves out SMS, which has its own panel
+func healthEvents(evs []event) []event {
+	return slices.DeleteFunc(evs, func(e event) bool { return e.Check == "sms" })
 }
 
 // handleReportTest sends a test message through every enabled channel and waits for the results

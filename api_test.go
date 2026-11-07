@@ -91,8 +91,8 @@ func TestAPIAuthAndErrors(t *testing.T) {
 		}
 	}
 
-	// the demo reports to an in-process fake Telegram and Loki
-	if code, out := c.do("POST", "/api/report/test", `{}`, true); code != http.StatusOK || fmt.Sprint(out["sent"]) != "[logs telegram]" {
+	// the demo reports to an in-process fake Telegram, WAHA and Loki
+	if code, out := c.do("POST", "/api/report/test", `{}`, true); code != http.StatusOK || fmt.Sprint(out["sent"]) != "[logs telegram whatsapp]" {
 		t.Errorf("report test: %d %v", code, out)
 	}
 	code, hl := c.do("GET", "/api/health", "", false)
@@ -118,7 +118,7 @@ func TestReportTestWithoutChannels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.cfg.c.TelegramToken, s.cfg.c.LogPushURL = "", ""
+	s.cfg.c.TelegramToken, s.cfg.c.LogPushURL, s.cfg.c.WhatsAppURL = "", "", ""
 	rec := httptest.NewRecorder()
 	s.handleReportTest(rec, httptest.NewRequest("POST", "/api/report/test", nil))
 	var out map[string]any

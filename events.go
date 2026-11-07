@@ -21,6 +21,8 @@ type event struct {
 	// jump for clock_fixed
 	Dur int64    `json:"dur,omitempty"`
 	Log []string `json:"log,omitempty"` // recent mihomo warnings attached to a failure
+	// the message of an "sms" event; Msg is the sender. It is kept out of shipped logs.
+	SMS *smsEvent `json:"sms,omitempty"`
 }
 
 const (

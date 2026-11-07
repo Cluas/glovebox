@@ -692,7 +692,7 @@ function renderHealth() {
 
 function renderReport() {
   const rep = S.info?.report || {};
-  const on = rep.telegram || rep.webhook || rep.logs;
+  const on = rep.telegram || rep.webhook || rep.whatsapp || rep.logs;
   $('[data-report-test]').hidden = !on;
   let html = `<p class="dim">${esc(t('rep.off'))}</p>`;
   if (on) {
@@ -705,9 +705,10 @@ function renderReport() {
       return `<div><dt>${label}</dt><dd><i class="dot ${c.error ? 'bad' : c.last_ok ? 'ok' : ''}"></i> ${
         esc(c.last_ok ? t('rep.last', { t: devAgo(c.last_ok) }) : t('rep.never'))}</dd><dd class="sub">${esc(extra) || '&nbsp;'}</dd></div>`;
     };
-    const errs = ['telegram', 'webhook', 'logs'].filter((k) => rep[k] && ch[k]?.error)
+    const errs = ['telegram', 'whatsapp', 'webhook', 'logs'].filter((k) => rep[k] && ch[k]?.error)
       .map((k) => `<p class="err small">${k}: ${esc(ch[k].error)}</p>`).join('');
-    html = `<dl class="stats c3">${cell('telegram', dual('TELEGRAM', 'rep.telegram'))}${cell('webhook', dual('WEBHOOK', 'rep.webhook'))}${cell('logs', dual('LOGS', 'rep.logs'))}</dl>${errs}`;
+    html = `<dl class="stats c4">${cell('telegram', dual('TELEGRAM', 'rep.telegram'))}${cell('whatsapp', dual('WHATSAPP', 'rep.whatsapp'))}${
+      cell('webhook', dual('WEBHOOK', 'rep.webhook'))}${cell('logs', dual('LOGS', 'rep.logs'))}</dl>${errs}`;
   }
   const el = $('#report-body');
   if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
@@ -921,6 +922,7 @@ async function loadDevice(first) {
   renderReport();
   loadHealth(first);
   if (first || !upd) loadUpdate();
+  loadSMS(first);
   loadDiag(first);
   if (first || !wifiLoaded) {
     try { renderWiFi(await api('/api/wifi')); } catch (e) {
@@ -1174,6 +1176,133 @@ function renderUpdate() {
   const el = $('#update-body');
   if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
 }
+
+/* ---------- SMS ---------- */
+
+let sms = null;
+let smsAt = 0;
+// ids already sent to /api/sms/read, so a slow reply does not mark them twice
+const smsMarked = new Set();
+
+async function loadSMS(force) {
+  if (!force && Date.now() - smsAt < 10000) return;
+  smsAt = Date.now();
+  try {
+    sms = await api('/api/sms');
+  } catch (e) {
+    if (!(e instanceof AuthError) && !(e instanceof NetError)) $('#sms-body').innerHTML = `<p class="err">[ERR] ${esc(e.message)}</p>`;
+    return;
+  }
+  renderSMS();
+  markSMSRead();
+}
+
+function renderSMS() {
+  const d = sms;
+  if (!d) return;
+  const un = $('#sms-unread');
+  un.hidden = !d.unread;
+  un.className = 'tag acc';
+  un.textContent = t('sms.unread', { n: d.unread });
+  $('#sms-sub').textContent = d.number ? t('sms.number', { n: d.number }) : t('p.sms');
+  const names = { telegram: 'Telegram', whatsapp: 'WhatsApp', webhook: 'Webhook' };
+  const meta = d.forward?.length ? t('sms.forward', { list: d.forward.map((k) => names[k] || k).join(', ') }) : t('sms.forwardOff');
+  const parts = [`<p class="sms-meta">${esc(meta)}</p>`];
+  if (d.error) parts.push(`<p class="err small">${esc(d.error)}</p>`);
+  const items = (d.messages || []).map((m) => {
+    const out = m.state === 'sent' || m.state === 'failed' || m.state === 'draft';
+    const tag = { unread: 'acc', sent: '', failed: 'bad', draft: '' }[m.state];
+    const code = m.code ? `<button class="sms-code" type="button" data-sms-copy="${esc(m.code)}" title="${esc(t('sms.copy'))}">${esc(m.code)}<svg class="ic"><use href="#i-copy"/></svg></button>` : '';
+    return `<li class="sms-item ${out ? 'out' : 'in'} ${m.state}" data-id="${m.id}">
+      <div class="sms-head"><b>${esc(out ? t('sms.toN', { n: m.number }) : m.number)}</b>${
+        tag !== undefined ? `<span class="tag ${tag}">${esc(t('sms.state.' + m.state))}</span>` : ''}<span class="sms-time" title="${esc(fmtClock(m.time))}">${esc(m.time ? relTime(m.time) : '')}</span></div>
+      <p class="sms-text">${esc(m.text)}</p>
+      <div class="sms-acts">${code}${out ? '' : `<button class="btn sm ghost" type="button" data-sms-reply="${esc(m.number)}">${esc(t('sms.reply'))}</button>`}<button class="btn sm ghost" type="button" data-sms-del="${m.id}">${esc(t('sms.delete'))}</button></div></li>`;
+  });
+  parts.push(items.length ? `<ul class="sms-list">${items.join('')}</ul>` : `<p class="empty">${esc(t('sms.empty'))}</p>`);
+  const html = parts.join('');
+  const el = $('#sms-body');
+  if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
+}
+
+// markSMSRead marks the unread messages read once the panel shows them
+async function markSMSRead() {
+  if (page !== 'device' || !visible()) return;
+  const ids = (sms?.messages || []).filter((m) => m.state === 'unread' && !smsMarked.has(m.id)).map((m) => m.id).slice(0, 100);
+  if (!ids.length) return;
+  ids.forEach((id) => smsMarked.add(id));
+  try { await api('/api/sms/read', { ids }); } catch { ids.forEach((id) => smsMarked.delete(id)); }
+}
+
+// renderSMSBadge shows the number of unread messages on the Device tab
+function renderSMSBadge(s) {
+  const n = Number(s.sms_unread) || 0;
+  const label = n ? t('sms.unread', { n }) : '';
+  $$('[data-sms-badge]').forEach((b) => {
+    b.hidden = !n;
+    const txt = n > 99 ? '99+' : String(n);
+    if (b.textContent !== txt) b.textContent = txt;
+    if (b.title !== label) { b.title = label; b.setAttribute('aria-label', label); }
+  });
+  if (page === 'device' && sms && n !== sms.unread) loadSMS(true);
+}
+
+$('#sms-form').addEventListener('input', () => {
+  const n = [...$('#sms-form').text.value].length;
+  $('#sms-count').textContent = n ? `${n}/500` : '';
+});
+
+$('#sms-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const f = ev.target;
+  const number = f.number.value.replace(/\s+/g, '');
+  const text = f.text.value.trim();
+  if (!number || !text) return;
+  if (!(await confirmBox(t('sms.confirm', { number: esc(number) }), { ok: t('sms.send') }))) return;
+  await busy(f.querySelector('button[type=submit]'), t('sms.send'), async () => {
+    await api('/api/sms/send', { number, text }, { timeout: 30000 });
+    toast(t('sms.sent'));
+    f.text.value = '';
+    $('#sms-count').textContent = '';
+    loadSMS(true);
+    // the modem reports the result a few seconds later
+    setTimeout(() => page === 'device' && loadSMS(true), 6000);
+  }).catch(fail);
+});
+
+$('#sms-body').addEventListener('click', async (ev) => {
+  const c = ev.target.closest('[data-sms-copy]');
+  if (c) {
+    const code = c.dataset.smsCopy;
+    try {
+      await navigator.clipboard.writeText(code);
+      toast(t('sms.copied', { code }));
+    } catch {
+      // the clipboard needs HTTPS: select the code so it can be copied by hand
+      const sel = getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(c);
+      sel.empty();
+      sel.addRange(range);
+    }
+    return;
+  }
+  const r = ev.target.closest('[data-sms-reply]');
+  if (r) {
+    const f = $('#sms-form');
+    f.number.value = r.dataset.smsReply;
+    f.text.focus();
+    return;
+  }
+  const d = ev.target.closest('[data-sms-del]');
+  if (!d) return;
+  if (!(await confirmBox(esc(t('sms.confirmDelete')), { danger: true, ok: t('sms.delete') }))) return;
+  await busy(d, '', async () => {
+    await api('/api/sms/delete', { ids: [Number(d.dataset.smsDel)] });
+    toast(t('sms.deleted'));
+    loadSMS(true);
+  }).catch(fail);
+});
 
 /* ---------- remote diagnostics ---------- */
 
@@ -1587,6 +1716,7 @@ async function statusTick() {
       if (page === 'device') renderClients(s.client_list, 'clients.table2', 'clients.count2');
       if (page === 'overview' || page === 'device') loadHealth();
       if (page === 'device') loadDiag();
+      renderSMSBadge(s);
       $('#crumb').parentElement.title = s.time || '';
     } catch (e) { if (!(e instanceof AuthError) && !(e instanceof NetError)) console.warn(e); }
   }

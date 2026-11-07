@@ -495,7 +495,8 @@ func TestUpdateEventText(t *testing.T) {
 	}
 	n := newNotifier(&configStore{c: defaultConfig()}, openEventLog(""), nil, &outbound{}, "")
 	tg := n.chans[0]
-	if !tg.wants(event{Check: "update", State: "info"}) || tg.wants(event{Check: "started", State: "info"}) {
+	c := defaultConfig()
+	if !tg.wants(c, event{Check: "update", State: "info"}) || tg.wants(c, event{Check: "started", State: "info"}) {
 		t.Error("Telegram should announce new versions but not starts")
 	}
 }

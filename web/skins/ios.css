@@ -63,10 +63,10 @@
 [data-skin="ios"] .btn.sm { min-height: 30px; padding: 0 12px; border-radius: 999px; font-size: .82rem; }
 [data-skin="ios"] .btn .badge { color: inherit; font-weight: 600; }
 
-[data-skin="ios"] :is(input[type=text], input[type=password], input[type=search], select) {
+[data-skin="ios"] :is(input[type=text], input[type=password], input[type=search], input[type=tel], select, textarea) {
   border: 0; border-radius: 10px; background-color: var(--fill); color: var(--fg); padding: 0 12px;
 }
-[data-skin="ios"] :is(input, select):focus { box-shadow: 0 0 0 3px rgba(var(--a-rgb), .25); }
+[data-skin="ios"] :is(input, select, textarea):focus { box-shadow: 0 0 0 3px rgba(var(--a-rgb), .25); }
 [data-skin="ios"] input::placeholder { color: var(--fg-3); }
 [data-skin="ios"] .search input { padding-left: 34px; }
 
@@ -107,6 +107,8 @@
 [data-skin="ios"] .upd-notes { border-left: 0; border-radius: 10px; background: var(--fill); }
 [data-skin="ios"] :is(.upd-bar, .upd-bar i) { border-radius: 999px; }
 [data-skin="ios"] .upd-bar { background: var(--fill-2); }
+[data-skin="ios"] .sms-code { border: 0; border-radius: 10px; background: rgba(var(--a-rgb), .14); letter-spacing: .08em; }
+[data-skin="ios"] :is(.sms-list, .sms-item) { border-color: var(--line); }
 [data-skin="ios"] .diag-job { border-top-style: solid; border-top-color: var(--line); }
 [data-skin="ios"] .diag-res li { border-bottom-color: var(--line); }
 [data-skin="ios"] .kv dt { font-size: .94rem; color: var(--fg); }

@@ -28,7 +28,7 @@ English · [简体中文](README.zh-CN.md)
 | --- | --- |
 | Overview | Quick actions (proxy mode, exit node, speed test, subscription update, connections, Wi-Fi band, restart proxy, reboot), cards that open the matching detail, live WAN throughput chart, signal (RSRP/SINR/band) with history, egress node and proxy chain, Tailscale reachability probe, monthly data usage, battery/CPU/memory/temperature gauges, connected clients, health checks and their events |
 | Proxy | mihomo groups and nodes, switch nodes, latency tests, rule/global/direct mode, update subscriptions and rule sets, live connections with filter and "close all" |
-| Device | Hotspot band (2.4 GHz or 5 GHz — the F50 runs one at a time) or off, SSID/password/visibility per band, max clients (up to the system limit), connected devices, alert and log shipping status, software update, remote diagnostics results, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme, light/dark and language |
+| Device | Hotspot band (2.4 GHz or 5 GHz — the F50 runs one at a time) or off, SSID/password/visibility per band, max clients (up to the system limit), connected devices, SMS (inbox, send, verification codes forwarded to Telegram or WhatsApp), alert and log shipping status, software update, remote diagnostics results, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme, light/dark and language |
 | Logs | mihomo, Box for Root, Glovebox and Android logcat — level filter, grep with highlight, follow/pause, wrap |
 
 Keyboard: `1`–`4` switch pages, `/` focuses the filter.
@@ -128,6 +128,10 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 | `report_lang` | `en` | Language of alerts, one of the `web/i18n` locales |
 | `telegram_token`, `telegram_chat` | | Telegram bot token and chat ID; both enable Telegram alerts |
 | `webhook_url` | | Receives every health event as a JSON POST |
+| `whatsapp_url`, `whatsapp_key` | | [WAHA](#sms) server and its API key; with `whatsapp_chat` they enable WhatsApp |
+| `whatsapp_chat` | | Number (international format) or WAHA chat ID that receives SMS on WhatsApp |
+| `whatsapp_session` | `default` | WAHA session to send from |
+| `sms_forward` | `telegram`, `whatsapp`, `webhook` | Channels that forward each SMS that arrives; empty forwards none |
 | `log_push_url` | | Loki push endpoint for logs and events; `user:password@` in the URL is sent as basic auth |
 | `dns_probe` | `127.0.0.1:1053` | mihomo DNS listener asked by the DNS check; empty skips that part |
 | `update_url` | `update.json` of the latest GitHub release | Signed release manifest checked for [remote upgrades](#remote-upgrade); empty turns them off |
@@ -140,7 +144,7 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 Files in `/data/adb/glovebox/`: `config.json`, `glovebox.log` (rotated at 1 MiB),
 `stdout.log` (output of the supervisor in `service.sh`), `tls/` (the local CA), `events.jsonl`
 (health events), `clock` (the last trusted time), `notify.json` / `ship.json` (how far alerts
-and log shipping got), `update/` (downloads, the previous version and the upgrade state),
+and log shipping got), `sms.json` (the last message forwarded), `update/` (downloads, the previous version and the upgrade state),
 `diag.log` (diagnostics results, rotated at 256 KiB) and `diag/` (the jobs that ran). They survive module upgrades and uninstalls.
 
 ## Health checks and reporting
@@ -192,6 +196,44 @@ docker run -d --name victorialogs --restart unless-stopped -p 9428:9428 \
   -v victorialogs:/vlogs victoriametrics/victoria-logs:v1.53.0 \
   -storageDataPath=/vlogs -retentionPeriod=30d
 ```
+
+## SMS
+
+The Device page lists the text messages of the SIM, sends new ones and deletes them, and the
+Device tab shows how many are unread. Glovebox reads them through the vendor web API every
+15 seconds. Each message that arrives becomes an `sms` event, which goes to the channels named in
+`sms_forward`:
+
+- **Telegram** (the alert bot): sender and time, the verification code on a line of its own (a tap
+  copies it), then the text.
+- **WhatsApp**: through a [WAHA](https://waha.devlike.pro) server (WhatsApp HTTP API) that you run,
+  logged in to a WhatsApp account as a linked device. The code comes first. Only SMS goes this way,
+  not health alerts.
+- **Webhook**: the event with an `sms` object (`id`, `from`, `text`, `code`, `at`).
+
+A verification code is a number of 4 to 8 digits, or two groups of three such as `615-204`, next
+to a word like "code", "OTP" or its Chinese equivalents. Messages that were on the SIM before the
+first start are not forwarded, nor the ones the device sends. The text stays out of the shipped
+logs and of the health events on the Overview page; the shipped event only names the sender.
+
+A WAHA server with the light GOWS engine; open `http://<host>:3000/dashboard`, start the `default`
+session and scan its QR code in WhatsApp under Settings → Linked devices:
+
+```sh
+docker run -d --name waha --restart unless-stopped -p 3000:3000 \
+  -e WHATSAPP_DEFAULT_ENGINE=GOWS -e WAHA_API_KEY=<random key> \
+  -e WAHA_DASHBOARD_USERNAME=admin -e WAHA_DASHBOARD_PASSWORD=<password> \
+  -v waha:/app/.sessions devlikeapro/waha:gows
+echo '{"whatsapp_url":"http://192.168.1.10:3000","whatsapp_key":"<random key>",
+  "whatsapp_chat":"8613800000000"}' | su -c '/data/adb/modules/glovebox/bin/glovebox config import'
+```
+
+`whatsapp_chat` is the number that receives the messages. With WAHA logged in to your own account,
+use your own number: the messages land in the chat with yourself, and WhatsApp may not notify you
+of those. WAHA is not an official client and WhatsApp may restrict accounts it flags, so a second
+account is the safer sender. Like the other channels, the device reaches WAHA through
+`report_proxy`. Sending an SMS may cost money, so the console asks first; numbers are digits with
+an optional leading `+`, and a message has at most 500 characters.
 
 ## Remote upgrade
 
@@ -311,6 +353,8 @@ which is why Glovebox talks to 192.168.0.1 rather than loopback.
   strict Content-Security-Policy.
 - Remote upgrades only install releases signed by a trusted ed25519 key whose zip matches the
   signed SHA-256 and size, and roll back a version that does not start.
+- SMS can only be read and sent from a logged-in console; the text of a message is never written
+  to the shipped logs.
 - Diagnostics jobs need a signature by the same keys, name one device, expire within 24 hours and
   run once; their probes only read, apart from a temporary mihomo log level.
 - Glovebox runs as root and can reboot the device and change Wi-Fi settings — treat the console

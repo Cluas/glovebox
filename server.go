@@ -31,6 +31,7 @@ type server struct {
 	ship   *shipper
 	update *updater
 	diag   *diagnoser
+	sms    *smsWatcher
 	// demo mode: in-process fake ZTE / mihomo backends, synthetic system info,
 	// destructive actions are only logged
 	demo bool
@@ -75,6 +76,7 @@ func newServer(cs *configStore, dataDir, logDir string) *server {
 	s.update = newUpdater(cs, s.events, s.health, out, dataDir)
 	s.diag = newDiagnoser(cs, s.health, mc, out, s.update.keys, dataDir)
 	s.diag.shipNow = s.ship.soon
+	s.sms = newSMSWatcher(cs, s.zte, s.events, s.health, dataDir)
 	return s
 }
 
@@ -87,6 +89,7 @@ func (s *server) run(ctx context.Context) error {
 	go s.health.loop(ctx)
 	s.notify.loop(ctx)
 	go s.ship.loop(ctx)
+	go s.sms.loop(ctx)
 	go ensureAlias(ctx, c.AliasAddr, c.AliasDev)
 
 	h := s.routes()
@@ -194,6 +197,10 @@ func (s *server) routes() http.Handler {
 	authed("POST /api/update/check", s.handleUpdateCheck)
 	authed("POST /api/update/install", s.handleUpdateInstall)
 	authed("GET /api/diag", s.handleDiag)
+	authed("GET /api/sms", s.handleSMS)
+	authed("POST /api/sms/send", s.handleSMSSend)
+	authed("POST /api/sms/delete", s.handleSMSDelete)
+	authed("POST /api/sms/read", s.handleSMSRead)
 
 	mux.Handle("GET /", staticHandler())
 	return s.guard(mux)

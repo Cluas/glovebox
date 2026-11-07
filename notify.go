@@ -78,7 +78,7 @@ type channelStatus struct {
 type channel struct {
 	name    string
 	enabled func(Config) bool
-	wants   func(event) bool
+	wants   func(Config, event) bool
 	// send delivers a prefix of evs and returns its length
 	send func(ctx context.Context, hc *http.Client, c Config, evs []event, dropped int64) (int, error)
 
@@ -110,7 +110,12 @@ func newNotifier(cfg *configStore, events *eventLog, h *health, out *outbound, d
 			enabled: Config.telegramEnabled,
 			// started and clock_fixed are only logged: the device starts with every drive. A new
 			// version is announced (notify mode) because nobody may open the console to see it.
-			wants: func(e event) bool { return e.State != "info" || e.Check == "update" },
+			wants: func(c Config, e event) bool {
+				if e.Check == "sms" {
+					return smsForwards(c, "telegram")
+				}
+				return e.State != "info" || e.Check == "update"
+			},
 			send: func(ctx context.Context, hc *http.Client, c Config, evs []event, dropped int64) (int, error) {
 				return sendTelegram(ctx, hc, n.telegramAPI, c, evs, dropped)
 			},
@@ -118,8 +123,14 @@ func newNotifier(cfg *configStore, events *eventLog, h *health, out *outbound, d
 		{
 			name:    "webhook",
 			enabled: func(c Config) bool { return c.WebhookURL != "" },
-			wants:   func(event) bool { return true },
+			wants:   func(c Config, e event) bool { return e.Check != "sms" || smsForwards(c, "webhook") },
 			send:    sendWebhook,
+		},
+		{
+			name:    "whatsapp",
+			enabled: Config.whatsAppEnabled,
+			wants:   func(c Config, e event) bool { return e.Check == "sms" && smsForwards(c, "whatsapp") },
+			send:    sendWhatsApp,
 		},
 	}
 	last := events.lastSeq()
@@ -196,6 +207,7 @@ func (n *notifier) run(ctx context.Context, ch *channel) {
 // pending returns the undelivered events the channel wants and the sequence number to advance to
 // when they are all delivered
 func (n *notifier) pending(ch *channel) ([]event, int64) {
+	c := n.cfg.get()
 	ch.mu.Lock()
 	cur := ch.cursor
 	ch.mu.Unlock()
@@ -205,7 +217,7 @@ func (n *notifier) pending(ch *channel) ([]event, int64) {
 	}
 	var evs []event
 	for _, e := range all {
-		if ch.wants(e) {
+		if ch.wants(c, e) {
 			evs = append(evs, e)
 		}
 	}
@@ -358,6 +370,9 @@ func eventText(lang, device string, e event) string {
 	if e.Check == "update" {
 		return tr(lang, "ev.update."+e.State, map[string]string{"msg": e.Msg})
 	}
+	if e.Check == "sms" {
+		return tr(lang, "ev.sms", map[string]string{"msg": e.Msg})
+	}
 	check := tr(lang, "hc."+e.Check, nil)
 	switch e.State {
 	case "fail":
@@ -371,6 +386,9 @@ func eventText(lang, device string, e event) string {
 }
 
 func telegramBlock(lang, device string, e event, withLog bool) string {
+	if e.SMS != nil {
+		return telegramSMS(lang, e)
+	}
 	mark := map[string]string{"fail": "\U0001F534", "ok": "\U0001F7E2", "test": "\U0001F514"}[e.State]
 	if e.Check == "update" && e.State == "info" {
 		mark = "\U0001F195"
@@ -387,6 +405,30 @@ func telegramBlock(lang, device string, e event, withLog bool) string {
 		fmt.Fprintf(&b, "\n%s\n<pre>%s</pre>", html.EscapeString(tr(lang, "alert.log", nil)), html.EscapeString(strings.Join(e.Log, "\n")))
 	}
 	return b.String()
+}
+
+// telegramSMS shows the code on a line of its own (Telegram copies <code> with a tap) above the text
+func telegramSMS(lang string, e event) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\U0001F4E9 <b>%s</b> · %s", html.EscapeString(eventText(lang, "", e)), smsStamp(e))
+	if e.SMS.Code != "" {
+		fmt.Fprintf(&b, "\n<code>%s</code>", html.EscapeString(e.SMS.Code))
+	}
+	text := []rune(e.SMS.Text)
+	if len(text) > 1500 {
+		text = append(text[:1500], '…')
+	}
+	fmt.Fprintf(&b, "\n<blockquote>%s</blockquote>", html.EscapeString(string(text)))
+	return b.String()
+}
+
+// smsStamp is when the message arrived, by the sender's network clock when known
+func smsStamp(e event) string {
+	at := e.Time
+	if e.SMS != nil && !e.SMS.At.IsZero() {
+		at = e.SMS.At
+	}
+	return at.In(time.Local).Format("01-02 15:04:05")
 }
 
 // telegramText renders as many events as fit in one message and returns how many it used
@@ -459,6 +501,7 @@ func sendWebhook(ctx context.Context, hc *http.Client, c Config, evs []event, _ 
 		body, _ := json.Marshal(map[string]any{
 			"device": c.DeviceName, "seq": e.Seq, "time": e.Time, "check": e.Check, "state": e.State,
 			"msg": e.Msg, "dur": e.Dur, "log": e.Log, "text": eventText(c.ReportLang, c.DeviceName, e),
+			"sms": e.SMS,
 		})
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.WebhookURL, bytes.NewReader(body))
 		if err != nil {
@@ -473,6 +516,65 @@ func sendWebhook(ctx context.Context, hc *http.Client, c Config, evs []event, _ 
 		resp.Body.Close()
 		if resp.StatusCode >= 300 {
 			return i, fmt.Errorf("webhook: %s", resp.Status)
+		}
+	}
+	return len(evs), nil
+}
+
+// whatsAppText is one WhatsApp message: the code first, so it is easy to copy, then the text
+func whatsAppText(c Config, e event) string {
+	if e.SMS == nil {
+		return eventText(c.ReportLang, c.DeviceName, e)
+	}
+	var b strings.Builder
+	if e.SMS.Code != "" {
+		fmt.Fprintf(&b, "\U0001F510 %s\n", e.SMS.Code)
+	}
+	fmt.Fprintf(&b, "\U0001F4E9 *%s* · %s · %s\n%s", eventText(c.ReportLang, c.DeviceName, e), c.DeviceName, smsStamp(e), e.SMS.Text)
+	return b.String()
+}
+
+// whatsAppChatID turns a phone number into a WAHA chat id; a chat id is used as it is
+func whatsAppChatID(chat string) string {
+	if strings.Contains(chat, "@") {
+		return chat
+	}
+	digits := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, chat)
+	return digits + "@c.us"
+}
+
+// sendWhatsApp sends each event as a message through WAHA's sendText
+func sendWhatsApp(ctx context.Context, hc *http.Client, c Config, evs []event, _ int64) (int, error) {
+	api := strings.TrimRight(c.WhatsAppURL, "/") + "/api/sendText"
+	for i, e := range evs {
+		body, _ := json.Marshal(map[string]string{
+			"session": c.WhatsAppSession, "chatId": whatsAppChatID(c.WhatsAppChat), "text": whatsAppText(c, e),
+		})
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, api, bytes.NewReader(body))
+		if err != nil {
+			return i, scrub(err, c.WhatsAppKey)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if c.WhatsAppKey != "" {
+			req.Header.Set("X-Api-Key", c.WhatsAppKey)
+		}
+		resp, err := hc.Do(req)
+		if err != nil {
+			return i, scrub(err, c.WhatsAppKey)
+		}
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		resp.Body.Close()
+		if resp.StatusCode >= 300 {
+			detail := strings.TrimSpace(string(msg))
+			if detail != "" {
+				detail = ": " + detail
+			}
+			return i, scrub(fmt.Errorf("whatsapp: %s%s", resp.Status, detail), c.WhatsAppKey)
 		}
 	}
 	return len(evs), nil

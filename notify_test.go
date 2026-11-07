@@ -212,7 +212,7 @@ func TestNotifySaveConcurrently(t *testing.T) {
 	}
 	b, err := os.ReadFile(filepath.Join(dir, "notify.json"))
 	var m map[string]int64
-	if err != nil || json.Unmarshal(b, &m) != nil || len(m) != 2 {
+	if err != nil || json.Unmarshal(b, &m) != nil || len(m) != len(n.chans) {
 		t.Fatalf("notify.json %q, %v", b, err)
 	}
 }

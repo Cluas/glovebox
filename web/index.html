@@ -35,6 +35,7 @@
   <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="1.5"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
   <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5a13 13 0 0 1 0 17M12 3.5a13 13 0 0 0 0 17"/></symbol>
   <symbol id="i-speed" viewBox="0 0 24 24"><path d="M4.2 17.5a8.5 8.5 0 1 1 15.6 0"/><path d="M12 14.5l3.8-4.3"/><circle cx="12" cy="15" r="1"/></symbol>
@@ -77,7 +78,7 @@
     <nav class="nav" aria-label="Main">
       <a href="#overview" data-page="overview"><span class="ni">01</span><svg class="ic"><use href="#i-overview"/></svg><span class="nl"><b>OVERVIEW</b><small data-i18n="nav.overview">Overview</small></span></a>
       <a href="#proxy" data-page="proxy"><span class="ni">02</span><svg class="ic"><use href="#i-proxy"/></svg><span class="nl"><b>PROXY</b><small data-i18n="nav.proxy">Proxy</small></span></a>
-      <a href="#device" data-page="device"><span class="ni">03</span><svg class="ic"><use href="#i-device"/></svg><span class="nl"><b>DEVICE</b><small data-i18n="nav.device">Device</small></span></a>
+      <a href="#device" data-page="device"><span class="ni">03</span><svg class="ic"><use href="#i-device"/></svg><span class="nl"><b>DEVICE</b><small data-i18n="nav.device">Device</small></span><span class="nb" data-sms-badge hidden></span></a>
       <a href="#logs" data-page="logs"><span class="ni">04</span><svg class="ic"><use href="#i-logs"/></svg><span class="nl"><b>LOGS</b><small data-i18n="nav.logs">Logs</small></span></a>
     </nav>
     <div class="side-foot">
@@ -286,6 +287,18 @@
           <div class="pb flush"><div class="table-wrap" data-k="clients.table2"></div></div>
         </article>
 
+        <article class="panel s12" id="sms">
+          <header class="ph"><span class="pi">✆</span><h2><span class="tt">SMS</span><span class="tn" data-i18n="ttl.sms">Messages</span></h2><span class="sub" id="sms-sub" data-i18n="p.sms">SIM text messages</span><div class="pa"><span class="tag" id="sms-unread" hidden></span></div></header>
+          <div class="pb sms-pb">
+            <form class="sms-form" id="sms-form" autocomplete="off">
+              <label class="field"><span class="lbl" data-i18n="sms.to">To</span><input type="tel" name="number" inputmode="tel" maxlength="24" spellcheck="false" required></label>
+              <label class="field"><span class="lbl"><span data-i18n="sms.text">Message</span> <span class="dim" id="sms-count"></span></span><textarea name="text" rows="2" maxlength="500" required></textarea></label>
+              <button class="btn pri" type="submit"><span data-i18n="sms.send">Send</span></button>
+            </form>
+            <div id="sms-body"><p class="dim" data-i18n="logs.loading">loading…</p></div>
+          </div>
+        </article>
+
         <article class="panel s12" id="report">
           <header class="ph"><span class="pi">✉</span><h2><span class="tt">REPORTING</span><span class="tn" data-i18n="ttl.report">Reporting</span></h2><span class="sub" data-i18n="p.report">alerts &amp; log shipping</span><div class="pa"><button class="btn sm" data-report-test hidden><span data-i18n="rep.test">Send test</span></button></div></header>
           <div class="pb" id="report-body"></div>
@@ -375,7 +388,7 @@
   <nav class="tabbar" aria-label="Main">
     <a href="#overview" data-page="overview"><svg class="ic"><use href="#i-overview"/></svg><span data-i18n="nav.overview">Overview</span></a>
     <a href="#proxy" data-page="proxy"><svg class="ic"><use href="#i-proxy"/></svg><span data-i18n="nav.proxy">Proxy</span></a>
-    <a href="#device" data-page="device"><svg class="ic"><use href="#i-device"/></svg><span data-i18n="nav.device">Device</span></a>
+    <a href="#device" data-page="device"><svg class="ic"><use href="#i-device"/></svg><span data-i18n="nav.device">Device</span><span class="nb" data-sms-badge hidden></span></a>
     <a href="#logs" data-page="logs"><svg class="ic"><use href="#i-logs"/></svg><span data-i18n="nav.logs">Logs</span></a>
   </nav>
 </div>

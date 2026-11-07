@@ -26,7 +26,7 @@
 | --- | --- |
 | 概览 | 快捷操作（代理模式、出口节点、测速、更新订阅、连接、Wi-Fi 频段、重启代理、重启设备）、点卡片直达对应详情、WAN 实时吞吐曲线、信号（RSRP/SINR/频段）及历史、出口节点和代理链、Tailscale 连通性探测、本月流量、电量/CPU/内存/温度、已连接设备、健康检查及其事件 |
 | 代理 | mihomo 分组和节点、切换节点、测速、规则/全局/直连模式、更新订阅和规则集、实时连接（可筛选、一键断开） |
-| 设备 | 热点频段（2.4 GHz 或 5 GHz，F50 同一时间只能开一个）或关闭，每个频段的名称/密码/隐藏、最大连接数（不超过系统上限）、已连接设备、告警和日志推送状态、软件更新、远程诊断结果、HTTPS 与安装指引、重启代理、重启设备、校正设备时间、控制台密码、主题、深浅色和语言 |
+| 设备 | 热点频段（2.4 GHz 或 5 GHz，F50 同一时间只能开一个）或关闭，每个频段的名称/密码/隐藏、最大连接数（不超过系统上限）、已连接设备、短信（收件箱、发短信、验证码推送到 Telegram 或 WhatsApp）、告警和日志推送状态、软件更新、远程诊断结果、HTTPS 与安装指引、重启代理、重启设备、校正设备时间、控制台密码、主题、深浅色和语言 |
 | 日志 | mihomo、Box for Root、Glovebox、Android logcat；级别筛选、grep 高亮、跟随/暂停、自动换行 |
 
 键盘：`1`–`4` 切换页面，`/` 聚焦筛选框。
@@ -119,6 +119,10 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 | `report_lang` | `en` | 告警语言，取 `web/i18n` 里的语言代码 |
 | `telegram_token`, `telegram_chat` | | Telegram bot token 和 chat ID；两者都设置后启用 Telegram 告警 |
 | `webhook_url` | | 每个健康事件都以 JSON POST 到这个地址 |
+| `whatsapp_url`, `whatsapp_key` | | [WAHA](#短信) 地址和它的 API key；和 `whatsapp_chat` 一起设置后启用 WhatsApp |
+| `whatsapp_chat` | | 在 WhatsApp 上收短信的号码（国际格式）或 WAHA 的 chat ID |
+| `whatsapp_session` | `default` | 用来发送的 WAHA 会话 |
+| `sms_forward` | `telegram`, `whatsapp`, `webhook` | 新短信推送到哪些渠道；为空则不推送 |
 | `log_push_url` | | 日志和事件的 Loki 推送地址；URL 里的 `user:password@` 作为 Basic 认证发送 |
 | `dns_probe` | `127.0.0.1:1053` | DNS 检查要询问的 mihomo DNS 监听地址；为空则跳过这一项 |
 | `update_url` | GitHub 最新 Release 的 `update.json` | [远程升级](#远程升级)检查的签名清单地址；为空则关闭远程升级 |
@@ -130,7 +134,7 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 
 `/data/adb/glovebox/` 下的文件：`config.json`、`glovebox.log`（超过 1 MiB 轮转）、`stdout.log`
 （`service.sh` 守护进程的输出）、`tls/`（本机 CA）、`events.jsonl`（健康事件）、`clock`（最后一次
-可信的时间）、`notify.json` / `ship.json`（告警和日志推送的进度）、`update/`（下载的安装包、上一个版本和升级状态）、`diag.log`（诊断结果，超过 256 KiB 轮转）
+可信的时间）、`notify.json` / `ship.json`（告警和日志推送的进度）、`sms.json`（推送到哪条短信了）、`update/`（下载的安装包、上一个版本和升级状态）、`diag.log`（诊断结果，超过 256 KiB 轮转）
 以及 `diag/`（执行过的任务）。升级或卸载模块都不会删除它们。
 
 ## 健康检查与上报
@@ -175,6 +179,37 @@ docker run -d --name victorialogs --restart unless-stopped -p 9428:9428 \
   -v victorialogs:/vlogs victoriametrics/victoria-logs:v1.53.0 \
   -storageDataPath=/vlogs -retentionPeriod=30d
 ```
+
+## 短信
+
+「设备」页可以看 SIM 卡收到的短信、发短信和删短信，「设备」标签上显示未读数。Glovebox 每 15 秒经原厂
+网页接口读一次。每条新短信都会生成一个 `sms` 事件，推送到 `sms_forward` 里列出的渠道：
+
+- **Telegram**（告警用的 bot）：发件人和时间，验证码单独一行（点一下就能复制），下面是全文。
+- **WhatsApp**：经你自己运行的 [WAHA](https://waha.devlike.pro)（WhatsApp HTTP API）发送，它以「已关联
+  设备」的身份登录一个 WhatsApp 号。验证码放在最前面。这个渠道只发短信，不发健康告警。
+- **Webhook**：事件 JSON 里多一个 `sms` 对象（`id`、`from`、`text`、`code`、`at`）。
+
+验证码是指「验证码」「code」「OTP」这类词附近的 4 到 8 位数字，或者 `615-204` 这样的两组三位数字。
+第一次启动前就在 SIM 卡里的短信不会推送，设备自己发出的也不会。短信正文不进上报的日志，也不出现在
+概览页的健康事件里；上报的事件只写发件人。
+
+下面是用轻量 GOWS 引擎的 WAHA；打开 `http://<主机>:3000/dashboard`，启动 `default` 会话，在 WhatsApp 的
+「设置 → 已关联的设备」里扫它的二维码：
+
+```sh
+docker run -d --name waha --restart unless-stopped -p 3000:3000 \
+  -e WHATSAPP_DEFAULT_ENGINE=GOWS -e WAHA_API_KEY=<random key> \
+  -e WAHA_DASHBOARD_USERNAME=admin -e WAHA_DASHBOARD_PASSWORD=<password> \
+  -v waha:/app/.sessions devlikeapro/waha:gows
+echo '{"whatsapp_url":"http://192.168.1.10:3000","whatsapp_key":"<random key>",
+  "whatsapp_chat":"8613800000000"}' | su -c '/data/adb/modules/glovebox/bin/glovebox config import'
+```
+
+`whatsapp_chat` 是收消息的号码。WAHA 登录的是你自己的号时就填自己的号码，消息会出现在「给自己发消息」
+的对话里，WhatsApp 对这种消息可能不提醒。WAHA 不是官方客户端，WhatsApp 可能限制它认为异常的账号，
+用另一个号来发更稳妥。和其它渠道一样，设备经 `report_proxy` 访问 WAHA。发短信可能要花钱，控制台会先
+确认；号码只能是数字，开头可以带 `+`，每条最多 500 个字。
 
 ## 远程升级
 
@@ -274,6 +309,7 @@ curl http://192.0.2.10:9428/select/logsql/query --data-urlencode 'query=_time:1h
 - 密码用 PBKDF2-SHA256 保存；会话是 HMAC 签名的 Cookie，修改密码后全部失效。登录失败过多会锁定，等待时间按指数增长。
 - 修改状态的请求必须带 `X-Glovebox: 1` 请求头（防 CSRF）；响应带严格的 Content-Security-Policy。
 - 远程升级只安装由受信任的 ed25519 密钥签名、且 zip 与签名里的 SHA-256 和大小一致的版本，新版本起不来会自动回滚。
+- 只有登录控制台后才能看短信和发短信；短信正文不会写进上报的日志。
 - 诊断任务必须由同一套密钥签名、只指定一台设备、24 小时内过期且只执行一次；除了临时的 mihomo 日志级别，探测都是只读的。
 - Glovebox 以 root 运行，可以重启设备、修改 Wi-Fi 设置，请妥善保管控制台密码。报告安全问题见
   [SECURITY.md](SECURITY.md)。

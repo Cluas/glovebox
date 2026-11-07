@@ -69,6 +69,15 @@ type Config struct {
 	TelegramChat  string `json:"telegram_chat"`
 	// every health event is POSTed here as JSON
 	WebhookURL string `json:"webhook_url"`
+	// WhatsApp messages through a WAHA server (WhatsApp HTTP API), enabled when url and chat are
+	// set: POST <url>/api/sendText with the key in X-Api-Key. chat is a phone number in
+	// international format or a WAHA chat id. Only SMS is sent this way.
+	WhatsAppURL     string `json:"whatsapp_url"`
+	WhatsAppKey     string `json:"whatsapp_key"`
+	WhatsAppChat    string `json:"whatsapp_chat"`
+	WhatsAppSession string `json:"whatsapp_session"`
+	// channels that forward each SMS that arrives: telegram, whatsapp, webhook; empty forwards none
+	SMSForward []string `json:"sms_forward"`
 	// Loki push endpoint (Grafana Loki, VictoriaLogs, Grafana Alloy); user:password in the URL is
 	// sent as basic auth
 	LogPushURL string `json:"log_push_url"`
@@ -111,12 +120,14 @@ func defaultConfig() Config {
 		DeviceName:  "glovebox",
 		ReportLang:  "en",
 		// Box for Root redirects DNS to mihomo on this port
-		DNSProbe:       "127.0.0.1:1053",
-		UpdateURL:      defaultUpdateURL,
-		UpdateMode:     "auto",
-		UpdateInterval: "1h",
-		DiagURL:        "auto",
-		DiagInterval:   "1m",
+		DNSProbe:        "127.0.0.1:1053",
+		UpdateURL:       defaultUpdateURL,
+		UpdateMode:      "auto",
+		UpdateInterval:  "1h",
+		WhatsAppSession: "default",
+		SMSForward:      []string{"telegram", "whatsapp", "webhook"},
+		DiagURL:         "auto",
+		DiagInterval:    "1m",
 	}
 }
 
@@ -126,6 +137,10 @@ func (c Config) tailscaleEnabled() bool {
 
 func (c Config) telegramEnabled() bool {
 	return c.TelegramToken != "" && c.TelegramChat != ""
+}
+
+func (c Config) whatsAppEnabled() bool {
+	return c.WhatsAppURL != "" && c.WhatsAppChat != ""
 }
 
 type configStore struct {
@@ -222,6 +237,9 @@ func (c Config) redacted() Config {
 	}
 	if c.TelegramToken != "" {
 		c.TelegramToken = "(set)"
+	}
+	if c.WhatsAppKey != "" {
+		c.WhatsAppKey = "(set)"
 	}
 	// webhook URLs usually carry their secret in the path or query
 	if c.WebhookURL != "" {

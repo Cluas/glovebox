@@ -37,7 +37,8 @@ const demoPassword = "glovebox"
 
 // newDemoServer starts the fake backends and returns a server wired to them; dir holds fake files
 func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
-	zteAddr, err := serveLocal(ctx, newFakeZTE())
+	zte := newFakeZTE()
+	zteAddr, err := serveLocal(ctx, zte)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +96,7 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 	c.DNSProbe = ""
 	c.DeviceName = "demo"
 	c.TelegramToken, c.TelegramChat = "demo", "demo"
+	c.WhatsAppURL, c.WhatsAppChat = "http://"+sinkAddr, "15555550142"
 	c.LogPushURL = "http://" + sinkAddr + "/insert/loki/api/v1/push"
 	rel, err := newFakeRelease(time.Now(), c.DeviceName)
 	if err != nil {
@@ -127,6 +129,14 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 	demoEvents(s.events, start)
 	// the update panel starts out with a newer version found
 	s.update.check(ctx)
+	// a verification code arrives a little later, so the SMS panel and its forwarding have news
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-time.After(20 * time.Second):
+			zte.smsArrive("1065500", "Your WhatsApp code: 615-204. Don't share this code with others.")
+		}
+	}()
 	// and the diagnostics panel with the results of a job, once the health checks ran
 	go func() {
 		select {
@@ -347,6 +357,16 @@ type fakeZTE struct {
 	loggedIn bool
 	aps      []map[string]any
 	wifiOn   bool // queryWiFiModuleSwitch; one band is on at a time, like the F50
+	sms      []fakeSMS
+	smsID    int64
+}
+
+// fakeSMS is a message of the vendor store; tag 0 read, 1 unread, 2 sent, 3 failed
+type fakeSMS struct {
+	id          int64
+	number, tag string
+	text        string
+	at          time.Time
 }
 
 func newFakeZTE() *fakeZTE {
@@ -358,7 +378,44 @@ func newFakeZTE() *fakeZTE {
 			"ApMaxStationNumber": "10", "ApIsolate": "0", "QrImageShow": "1",
 		}
 	}
-	return &fakeZTE{start: time.Now(), wifiOn: true, aps: []map[string]any{ap("0", "0", "Glovebox"), ap("1", "1", "Glovebox-5G")}}
+	f := &fakeZTE{start: time.Now(), wifiOn: true, aps: []map[string]any{ap("0", "0", "Glovebox"), ap("1", "1", "Glovebox-5G")}}
+	now := time.Now()
+	for _, m := range []fakeSMS{
+		{number: "10099", tag: "0", text: "Data balance: 18.4 GB of 30 GB left this month. Reply CX for details.", at: now.Add(-50 * time.Hour)},
+		{number: "15555550123", tag: "2", text: "On my way, see you at 7.", at: now.Add(-26 * time.Hour)},
+		{number: "15555550123", tag: "0", text: "Great, I'll wait at the north entrance.", at: now.Add(-25 * time.Hour)},
+		{number: "15555550188", tag: "3", text: "Parked at level B2, spot 114.", at: now.Add(-3 * time.Hour)},
+		{number: "10690000", tag: "1", text: "G-482913 is your Google verification code.", at: now.Add(-14 * time.Minute)},
+	} {
+		f.smsID++
+		m.id = f.smsID
+		f.sms = append(f.sms, m)
+	}
+	return f
+}
+
+// smsArrive receives a message, as the modem would
+func (f *fakeZTE) smsArrive(number, text string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.smsID++
+	f.sms = append(f.sms, fakeSMS{id: f.smsID, number: number, tag: "1", text: text, at: time.Now()})
+}
+
+// smsJSON is the sms_data_total reply: newest first, base64 content, the date with its zone in
+// quarter hours
+func (f *fakeZTE) smsJSON(n int) []any {
+	var l []any
+	for i := len(f.sms) - 1; i >= 0 && len(l) < n; i-- {
+		m := f.sms[i]
+		_, off := m.at.Zone()
+		l = append(l, map[string]any{
+			"id": strconv.FormatInt(m.id, 10), "number": m.number, "tag": m.tag, "draft_group_id": "",
+			"content": base64.StdEncoding.EncodeToString([]byte(m.text)),
+			"date":    m.at.Format("06,01,02,15,04,05,") + fmt.Sprintf("%+d", off/900),
+		})
+	}
+	return l
 }
 
 var demoStations = []map[string]any{
@@ -417,6 +474,16 @@ func (f *fakeZTE) field(name string) any {
 		return strconv.FormatInt(41_300_000_000+int64(t*2_100_000), 10)
 	case "monthly_tx_bytes":
 		return strconv.FormatInt(3_870_000_000+int64(t*180_000), 10)
+	case "sms_unread_num":
+		n := 0
+		for _, m := range f.sms {
+			if m.tag == "1" {
+				n++
+			}
+		}
+		return strconv.Itoa(n)
+	case "sim_msisdn":
+		return "15555550142"
 	case "SSID1":
 		return str(f.aps[1]["SSID"])
 	case "wifi_onoff_state", "WiFiModuleSwitch":
@@ -455,6 +522,15 @@ func (f *fakeZTE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/goform/goform_get_cmd_process":
 		cmds := strings.Split(r.URL.Query().Get("cmd"), ",")
+		if len(cmds) == 1 && cmds[0] == "sms_data_total" {
+			if !f.loggedIn {
+				out["messages"] = ""
+				break
+			}
+			n, _ := strconv.Atoi(r.URL.Query().Get("data_per_page"))
+			out["messages"] = f.smsJSON(max(n, 1))
+			break
+		}
 		if len(cmds) == 1 && cmds[0] == "queryAccessPointInfo" {
 			if !f.loggedIn {
 				out["ResponseList"] = []any{}
@@ -513,6 +589,35 @@ func (f *fakeZTE) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "switchWiFiModule":
 			f.wifiOn = r.PostForm.Get("SwitchOption") == "1"
 			out["result"] = "success"
+		case "SEND_SMS":
+			text, ok := decodeUCS2(r.PostForm.Get("MessageBody"))
+			if !ok || r.PostForm.Get("Number") == "" {
+				out["result"] = "failure"
+				break
+			}
+			f.smsID++
+			// numbers starting with 000 fail, so the panel can show a failed message
+			tag := "2"
+			if strings.HasPrefix(r.PostForm.Get("Number"), "000") {
+				tag = "3"
+			}
+			f.sms = append(f.sms, fakeSMS{id: f.smsID, number: r.PostForm.Get("Number"), tag: tag, text: text, at: time.Now()})
+			out["result"] = "success"
+		case "DELETE_SMS", "SET_MSG_READ":
+			id, _ := strconv.ParseInt(r.PostForm.Get("msg_id"), 10, 64)
+			out["result"] = "failure"
+			for i := range f.sms {
+				if f.sms[i].id != id {
+					continue
+				}
+				if r.PostForm.Get("goformId") == "DELETE_SMS" {
+					f.sms = append(f.sms[:i], f.sms[i+1:]...)
+				} else if f.sms[i].tag == "1" {
+					f.sms[i].tag = "0"
+				}
+				out["result"] = "success"
+				break
+			}
 		default:
 			out["result"] = "failure"
 		}

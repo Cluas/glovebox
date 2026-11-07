@@ -154,6 +154,7 @@ func (sh *shipper) round(ctx context.Context) (more bool, err error) {
 	if evs := sh.events.since(st.EventSeq); len(evs) > 0 {
 		vals := make([][2]string, 0, len(evs))
 		for _, e := range evs {
+			e.SMS = nil // the text of a message, which may be a verification code, stays on the device
 			b, _ := json.Marshal(shippedEvent{Line: eventLine(e), event: e})
 			vals = append(vals, [2]string{strconv.FormatInt(e.Time.UnixNano(), 10), string(b)})
 		}
