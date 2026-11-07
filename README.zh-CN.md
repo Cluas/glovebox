@@ -89,6 +89,15 @@ hosts:
 选项以系统实际报告的上限（`dumpsys wifi`）为准。真正能连多少台还取决于 Wi-Fi 固件。编译时加
 `NO_OVERLAY=1` 可以保留厂商上限。如果热点异常，删除 `/data/adb/modules/glovebox/system` 后重启即可恢复。
 
+### 断电与 Magisk 安全模式
+
+F50 没有电池，全靠 USB 供电。开机时供电不足，它就会反复重启，Magisk 可能因此进入安全模式、禁用所有
+模块：热点照常，但 Glovebox 和 Box 在之后的开机里都不会运行。Glovebox 会在
+`/data/adb/service.d/glovebox-rescue.sh` 放一个开机脚本，模块被禁用时 Magisk 也会运行它。下一次不在
+安全模式的开机时，它把 Glovebox 和 Box（`box_for_root`）重新启用并启动，Glovebox 随后发出告警。只删除
+安全模式留下的禁用文件（权限 000）：在 Magisk 应用里手动关掉的模块不会被打开。系统覆盖包（热点连接数
+上限）要再重启一次才恢复。卸载模块时会一并删除这个脚本。
+
 ## 配置
 
 `/data/adb/glovebox/config.json` 只保存和默认值不同的字段。用 `glovebox config` 查看当前生效的配置，
@@ -134,7 +143,7 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 
 `/data/adb/glovebox/` 下的文件：`config.json`、`glovebox.log`（超过 1 MiB 轮转）、`stdout.log`
 （`service.sh` 守护进程的输出）、`tls/`（本机 CA）、`events.jsonl`（健康事件）、`clock`（最后一次
-可信的时间）、`notify.json` / `ship.json`（告警和日志推送的进度）、`sms.json`（推送到哪条短信了）、`update/`（下载的安装包、上一个版本和升级状态）、`diag.log`（诊断结果，超过 256 KiB 轮转）
+可信的时间）、`notify.json` / `ship.json`（告警和日志推送的进度）、`sms.json`（推送到哪条短信了）、`rescued`（[安全模式](#断电与-magisk-安全模式)脚本恢复了哪些模块，Glovebox 报告后删除）、`update/`（下载的安装包、上一个版本和升级状态）、`diag.log`（诊断结果，超过 256 KiB 轮转）
 以及 `diag/`（执行过的任务）。升级或卸载模块都不会删除它们。
 
 ## 健康检查与上报

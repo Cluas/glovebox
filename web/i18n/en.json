@@ -267,6 +267,7 @@
   "ev.started": "Glovebox {msg} started, system up {dur}",
   "ev.clock_fixed": "Clock corrected by {dur}",
   "ev.sms": "SMS from {msg}",
+  "ev.rescue": "Magisk turned off {msg} after an unstable boot (safe mode); turned back on",
   "ev.update.info": "Update {msg} is available",
   "ev.update.ok": "Updated {msg}",
   "ev.update.fail": "Update failed",

@@ -15,14 +15,15 @@ import (
 )
 
 type server struct {
-	cfg    *configStore
-	auth   *auth
-	zte    *zteClient
-	mihomo *mihomoClient
-	net    *netSampler
-	ts     *tsProbe
-	certs  *certManager // nil when HTTPS is off
-	logDir string
+	cfg     *configStore
+	auth    *auth
+	zte     *zteClient
+	mihomo  *mihomoClient
+	net     *netSampler
+	ts      *tsProbe
+	certs   *certManager // nil when HTTPS is off
+	logDir  string
+	dataDir string
 
 	// health checks and reporting
 	events *eventLog
@@ -55,14 +56,15 @@ func newServer(cs *configStore, dataDir, logDir string) *server {
 	c := cs.get()
 	mc := newMihomo(c.MihomoAPI, c.MihomoSecret)
 	s := &server{
-		cfg:    cs,
-		auth:   &auth{cfg: cs},
-		zte:    newZTE(c.ZTEBase, c.ZTEDB),
-		mihomo: mc,
-		net:    &netSampler{wanPrefixes: c.WANPrefixes, lanDev: c.LANDev},
-		ts:     &tsProbe{m: mc, cfg: cs},
-		logDir: logDir,
-		sys:    readSysInfo,
+		cfg:     cs,
+		auth:    &auth{cfg: cs},
+		zte:     newZTE(c.ZTEBase, c.ZTEDB),
+		mihomo:  mc,
+		net:     &netSampler{wanPrefixes: c.WANPrefixes, lanDev: c.LANDev},
+		ts:      &tsProbe{m: mc, cfg: cs},
+		logDir:  logDir,
+		dataDir: dataDir,
+		sys:     readSysInfo,
 	}
 	eventsPath := ""
 	if dataDir != "" {
@@ -90,6 +92,9 @@ func (s *server) run(ctx context.Context) error {
 	s.notify.loop(ctx)
 	go s.ship.loop(ctx)
 	go s.sms.loop(ctx)
+	if !s.demo {
+		go s.rescueLoop(ctx)
+	}
 	go ensureAlias(ctx, c.AliasAddr, c.AliasDev)
 
 	h := s.routes()

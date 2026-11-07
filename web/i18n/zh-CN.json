@@ -267,6 +267,7 @@
   "ev.started": "Glovebox {msg} 已启动，系统已运行 {dur}",
   "ev.clock_fixed": "时钟已校正，调整了 {dur}",
   "ev.sms": "来自 {msg} 的短信",
+  "ev.rescue": "Magisk 在一次不稳定的开机后进了安全模式，禁用了 {msg}；已自动恢复",
   "ev.update.info": "有新版本 {msg}",
   "ev.update.ok": "已升级 {msg}",
   "ev.update.fail": "升级失败",

@@ -97,6 +97,18 @@ up to the limit the system reports (`dumpsys wifi`). The real ceiling also depen
 firmware. Build with `NO_OVERLAY=1` to leave the vendor limit alone. If the hotspot misbehaves,
 delete `/data/adb/modules/glovebox/system` and reboot.
 
+### Power loss and Magisk safe mode
+
+The F50 has no battery and runs from its USB supply. When that supply sags while the device boots,
+it restarts again and again, and Magisk can end up in safe mode, which disables every module:
+the hotspot still works, but Glovebox and Box stay off at the following boots. Glovebox puts a
+boot script into `/data/adb/service.d/glovebox-rescue.sh`, which Magisk runs while the modules are
+disabled. At the next boot that is not in safe mode it turns Glovebox and Box (`box_for_root`)
+back on, starts them, and Glovebox raises an alert. Only the disable files safe mode leaves
+(mode 000) are removed: a module turned off in the Magisk app stays off. The system overlay
+(hotspot client limit) comes back at the reboot after that. Uninstalling the module removes the
+script.
+
 ## Configuration
 
 `/data/adb/glovebox/config.json` stores only values that differ from the defaults. Inspect the
@@ -144,7 +156,7 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 Files in `/data/adb/glovebox/`: `config.json`, `glovebox.log` (rotated at 1 MiB),
 `stdout.log` (output of the supervisor in `service.sh`), `tls/` (the local CA), `events.jsonl`
 (health events), `clock` (the last trusted time), `notify.json` / `ship.json` (how far alerts
-and log shipping got), `sms.json` (the last message forwarded), `update/` (downloads, the previous version and the upgrade state),
+and log shipping got), `sms.json` (the last message forwarded), `rescued` (what the [safe mode](#power-loss-and-magisk-safe-mode) script turned back on, until Glovebox reports it), `update/` (downloads, the previous version and the upgrade state),
 `diag.log` (diagnostics results, rotated at 256 KiB) and `diag/` (the jobs that ran). They survive module upgrades and uninstalls.
 
 ## Health checks and reporting

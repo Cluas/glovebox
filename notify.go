@@ -114,7 +114,7 @@ func newNotifier(cfg *configStore, events *eventLog, h *health, out *outbound, d
 				if e.Check == "sms" {
 					return smsForwards(c, "telegram")
 				}
-				return e.State != "info" || e.Check == "update"
+				return e.State != "info" || e.Check == "update" || e.Check == "rescue"
 			},
 			send: func(ctx context.Context, hc *http.Client, c Config, evs []event, dropped int64) (int, error) {
 				return sendTelegram(ctx, hc, n.telegramAPI, c, evs, dropped)
@@ -392,6 +392,9 @@ func telegramBlock(lang, device string, e event, withLog bool) string {
 	mark := map[string]string{"fail": "\U0001F534", "ok": "\U0001F7E2", "test": "\U0001F514"}[e.State]
 	if e.Check == "update" && e.State == "info" {
 		mark = "\U0001F195"
+	}
+	if e.Check == "rescue" {
+		mark = "\u26A0\uFE0F"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s <b>%s</b>", mark, html.EscapeString(eventText(lang, device, e)))
