@@ -171,8 +171,9 @@ func encodeUCS2(s string) string {
 	return b.String()
 }
 
-// parseSMSDate parses "26,11,07,10,30,05,+32": year, month, day, time and the zone in quarter
-// hours. A date without a zone is local time.
+// parseSMSDate parses "26,11,08,02,38,38,+0800": year, month, day, time and the zone. The F50
+// writes the zone as hours and minutes; older ZTE firmware writes it in quarter hours ("+32").
+// A date without a zone, or with one no place uses, is local time.
 func parseSMSDate(s string) time.Time {
 	p := strings.Split(s, ",")
 	if len(p) < 6 {
@@ -191,11 +192,47 @@ func parseSMSDate(s string) time.Time {
 	}
 	loc := time.Local
 	if len(p) > 6 {
-		if q, err := strconv.Atoi(strings.TrimSpace(p[6])); err == nil {
-			loc = time.FixedZone("", q*15*60)
+		if off, ok := smsZone(strings.TrimSpace(p[6])); ok {
+			loc = time.FixedZone("", off)
 		}
 	}
 	return time.Date(n[0], time.Month(n[1]), n[2], n[3], n[4], n[5], 0, loc)
+}
+
+// smsZone reads the zone of an SMS date as seconds east of UTC: "+0800" or "+08:00", or quarter
+// hours such as "+32". An offset beyond what any place uses is refused: time.Time cannot encode
+// one to JSON, which would break the SMS list and the event log.
+func smsZone(z string) (int, bool) {
+	sign := 1
+	switch {
+	case strings.HasPrefix(z, "-"):
+		sign, z = -1, z[1:]
+	case strings.HasPrefix(z, "+"):
+		z = z[1:]
+	}
+	var off int
+	if h, m, colon := strings.Cut(z, ":"); colon || len(z) > 2 {
+		if !colon {
+			h, m = z[:len(z)-2], z[len(z)-2:]
+		}
+		hh, err1 := strconv.Atoi(h)
+		mm, err2 := strconv.Atoi(m)
+		if err1 != nil || err2 != nil || hh < 0 || mm < 0 || mm > 59 {
+			return 0, false
+		}
+		off = hh*3600 + mm*60
+	} else {
+		q, err := strconv.Atoi(z)
+		if err != nil || q < 0 {
+			return 0, false
+		}
+		off = q * 15 * 60
+	}
+	off *= sign
+	if off < -12*3600 || off > 14*3600 {
+		return 0, false
+	}
+	return off, true
 }
 
 var (

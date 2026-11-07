@@ -107,6 +107,7 @@ func (l *eventLog) appendLocked(e event) {
 	}
 	b, err := json.Marshal(e)
 	if err != nil {
+		log.Printf("events: %v", err)
 		return
 	}
 	b = append(b, '\n')

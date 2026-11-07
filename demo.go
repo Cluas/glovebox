@@ -402,17 +402,21 @@ func (f *fakeZTE) smsArrive(number, text string) {
 	f.sms = append(f.sms, fakeSMS{id: f.smsID, number: number, tag: "1", text: text, at: time.Now()})
 }
 
-// smsJSON is the sms_data_total reply: newest first, base64 content, the date with its zone in
-// quarter hours
+// smsJSON is the sms_data_total reply: newest first, base64 content, the date with its zone as
+// the F50 writes it ("+0800")
 func (f *fakeZTE) smsJSON(n int) []any {
 	var l []any
 	for i := len(f.sms) - 1; i >= 0 && len(l) < n; i-- {
 		m := f.sms[i]
 		_, off := m.at.Zone()
+		sign := '+'
+		if off < 0 {
+			sign, off = '-', -off
+		}
 		l = append(l, map[string]any{
 			"id": strconv.FormatInt(m.id, 10), "number": m.number, "tag": m.tag, "draft_group_id": "",
 			"content": base64.StdEncoding.EncodeToString([]byte(m.text)),
-			"date":    m.at.Format("06,01,02,15,04,05,") + fmt.Sprintf("%+d", off/900),
+			"date":    m.at.Format("06,01,02,15,04,05,") + fmt.Sprintf("%c%02d%02d", sign, off/3600, off%3600/60),
 		})
 	}
 	return l

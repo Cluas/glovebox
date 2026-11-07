@@ -48,6 +48,29 @@ func TestParseSMSDate(t *testing.T) {
 	if got := parseSMSDate("26,11,07,10,30,05"); !got.Equal(time.Date(2026, 11, 7, 10, 30, 5, 0, time.Local)) {
 		t.Errorf("without zone: %v", got)
 	}
+	// what the F50 sends
+	for _, z := range []string{"+0800", "+08:00", "+800"} {
+		got := parseSMSDate("26,11,08,02,38,38," + z)
+		if want := time.Date(2026, 11, 8, 2, 38, 38, 0, time.FixedZone("", 8*3600)); !got.Equal(want) {
+			t.Errorf("%s: %v, want %v", z, got, want)
+		}
+		if _, err := json.Marshal(got); err != nil {
+			t.Errorf("%s: %v", z, err)
+		}
+	}
+	if got := parseSMSDate("26,11,08,02,38,38,-0530"); !got.Equal(time.Date(2026, 11, 8, 2, 38, 38, 0, time.FixedZone("", -(5*3600+30*60)))) {
+		t.Errorf("-0530: %v", got)
+	}
+	// a zone no place uses falls back to local time instead of a time JSON cannot encode
+	for _, z := range []string{"+2500", "+99", "+08:75", "x"} {
+		got := parseSMSDate("26,11,08,02,38,38," + z)
+		if !got.Equal(time.Date(2026, 11, 8, 2, 38, 38, 0, time.Local)) {
+			t.Errorf("%s: %v", z, got)
+		}
+		if _, err := json.Marshal(got); err != nil {
+			t.Errorf("%s: %v", z, err)
+		}
+	}
 	for _, bad := range []string{"", "26,11,07", "a,b,c,d,e,f,+32"} {
 		if !parseSMSDate(bad).IsZero() {
 			t.Errorf("%q parsed", bad)
