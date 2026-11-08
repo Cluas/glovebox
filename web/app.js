@@ -692,23 +692,27 @@ function renderHealth() {
 
 function renderReport() {
   const rep = S.info?.report || {};
-  const on = rep.telegram || rep.webhook || rep.whatsapp || rep.logs;
+  const on = rep.telegram || rep.feishu || rep.webhook || rep.whatsapp || rep.logs || H.data?.bot?.enabled;
   $('[data-report-test]').hidden = !on;
   let html = `<p class="dim">${esc(t('rep.off'))}</p>`;
   if (on) {
     const ch = H.data?.channels || {};
+    const bot = H.data?.bot || {};
     const cell = (k, label) => {
-      if (!rep[k]) return `<div class="off"><dt>${label}</dt><dd>${t('rep.disabled')}</dd><dd class="sub">&nbsp;</dd></div>`;
+      if (!rep[k] && !(k === 'feishu' && bot.enabled)) return `<div class="off"><dt>${label}</dt><dd>${t('rep.disabled')}</dd><dd class="sub">&nbsp;</dd></div>`;
       const c = ch[k] || {};
       const pend = !c.pending ? '' : k === 'logs' ? t('rep.behind', { size: fmtBytes(c.pending) }) : t('rep.queued', { n: c.pending });
-      const extra = [pend, c.dropped ? t('rep.dropped', { n: c.dropped }) : ''].filter(Boolean).join(' · ');
+      const botState = k === 'feishu' && bot.enabled ? t(bot.connected ? 'rep.bot.on' : 'rep.bot.off') : '';
+      const extra = [botState, pend, c.dropped ? t('rep.dropped', { n: c.dropped }) : ''].filter(Boolean).join(' · ');
       return `<div><dt>${label}</dt><dd><i class="dot ${c.error ? 'bad' : c.last_ok ? 'ok' : ''}"></i> ${
         esc(c.last_ok ? t('rep.last', { t: devAgo(c.last_ok) }) : t('rep.never'))}</dd><dd class="sub">${esc(extra) || '&nbsp;'}</dd></div>`;
     };
-    const errs = ['telegram', 'whatsapp', 'webhook', 'logs'].filter((k) => rep[k] && ch[k]?.error)
+    const keys = ['telegram', 'feishu', 'whatsapp', 'webhook', 'logs'];
+    let errs = keys.filter((k) => rep[k] && ch[k]?.error)
       .map((k) => `<p class="err small">${k}: ${esc(ch[k].error)}</p>`).join('');
-    html = `<dl class="stats c4">${cell('telegram', dual('TELEGRAM', 'rep.telegram'))}${cell('whatsapp', dual('WHATSAPP', 'rep.whatsapp'))}${
-      cell('webhook', dual('WEBHOOK', 'rep.webhook'))}${cell('logs', dual('LOGS', 'rep.logs'))}</dl>${errs}`;
+    if (bot.enabled && bot.error) errs += `<p class="err small">feishu bot: ${esc(bot.error)}</p>`;
+    if (bot.bind) errs += `<p class="small">${esc(t('rep.bot.bind', { code: bot.bind }))}</p>`;
+    html = `<dl class="stats c5">${keys.map((k) => cell(k, dual(k.toUpperCase(), 'rep.' + k))).join('')}</dl>${errs}`;
   }
   const el = $('#report-body');
   if (el.dataset.sig !== html) { el.dataset.sig = html; el.innerHTML = html; }
@@ -1205,8 +1209,7 @@ function renderSMS() {
   un.className = 'tag acc';
   un.textContent = t('sms.unread', { n: d.unread });
   $('#sms-sub').textContent = d.number ? t('sms.number', { n: d.number }) : t('p.sms');
-  const names = { telegram: 'Telegram', whatsapp: 'WhatsApp', webhook: 'Webhook' };
-  const meta = d.forward?.length ? t('sms.forward', { list: d.forward.map((k) => names[k] || k).join(', ') }) : t('sms.forwardOff');
+  const meta = d.forward?.length ? t('sms.forward', { list: d.forward.map((k) => t('rep.' + k)).join(', ') }) : t('sms.forwardOff');
   const parts = [`<p class="sms-meta">${esc(meta)}</p>`];
   if (d.error) parts.push(`<p class="err small">${esc(d.error)}</p>`);
   const items = (d.messages || []).map((m) => {

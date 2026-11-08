@@ -76,7 +76,19 @@ type Config struct {
 	WhatsAppKey     string `json:"whatsapp_key"`
 	WhatsAppChat    string `json:"whatsapp_chat"`
 	WhatsAppSession string `json:"whatsapp_session"`
-	// channels that forward each SMS that arrives: telegram, whatsapp, webhook; empty forwards none
+	// Feishu (Lark) alerts through a custom bot in a group chat, enabled when the webhook is set;
+	// the secret is needed when the bot verifies signatures
+	FeishuWebhook string `json:"feishu_webhook"`
+	FeishuSecret  string `json:"feishu_secret"`
+	// the Feishu bot (feishu_bot.go), a self-built app in your Feishu team, enabled when app id and
+	// secret are set; it obeys the open_ids in bot_users, who are bound by sending it the code the
+	// console shows. domain is https://open.larksuite.com for Lark.
+	FeishuAppID     string   `json:"feishu_app_id"`
+	FeishuAppSecret string   `json:"feishu_app_secret"`
+	FeishuBotUsers  []string `json:"feishu_bot_users"`
+	FeishuDomain    string   `json:"feishu_domain"`
+	// channels that forward each SMS that arrives: telegram, feishu, whatsapp, webhook; empty
+	// forwards none
 	SMSForward []string `json:"sms_forward"`
 	// Loki push endpoint (Grafana Loki, VictoriaLogs, Grafana Alloy); user:password in the URL is
 	// sent as basic auth
@@ -125,7 +137,8 @@ func defaultConfig() Config {
 		UpdateMode:      "auto",
 		UpdateInterval:  "1h",
 		WhatsAppSession: "default",
-		SMSForward:      []string{"telegram", "whatsapp", "webhook"},
+		SMSForward:      []string{"telegram", "feishu", "whatsapp", "webhook"},
+		FeishuDomain:    "https://open.feishu.cn",
 		DiagURL:         "auto",
 		DiagInterval:    "1m",
 	}
@@ -241,9 +254,18 @@ func (c Config) redacted() Config {
 	if c.WhatsAppKey != "" {
 		c.WhatsAppKey = "(set)"
 	}
+	if c.FeishuSecret != "" {
+		c.FeishuSecret = "(set)"
+	}
+	if c.FeishuAppSecret != "" {
+		c.FeishuAppSecret = "(set)"
+	}
 	// webhook URLs usually carry their secret in the path or query
 	if c.WebhookURL != "" {
 		c.WebhookURL = "(set)"
+	}
+	if c.FeishuWebhook != "" {
+		c.FeishuWebhook = "(set)"
 	}
 	if u, err := url.Parse(c.LogPushURL); err == nil && u.User != nil {
 		c.LogPushURL = u.Redacted()

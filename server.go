@@ -29,6 +29,7 @@ type server struct {
 	events *eventLog
 	health *health
 	notify *notifier
+	bot    *feishuBot
 	ship   *shipper
 	update *updater
 	diag   *diagnoser
@@ -74,6 +75,8 @@ func newServer(cs *configStore, dataDir, logDir string) *server {
 	s.health = newHealth(s, s.events, dataDir)
 	out := &outbound{}
 	s.notify = newNotifier(cs, s.events, s.health, out, dataDir)
+	s.bot = newFeishuBot(s)
+	s.notify.bot = s.bot
 	s.ship = newShipper(cs, s.events, s.health, out, dataDir, logDir)
 	s.update = newUpdater(cs, s.events, s.health, out, dataDir)
 	s.diag = newDiagnoser(cs, s.health, mc, out, s.update.keys, dataDir)
@@ -92,6 +95,9 @@ func (s *server) run(ctx context.Context) error {
 	s.notify.loop(ctx)
 	go s.ship.loop(ctx)
 	go s.sms.loop(ctx)
+	if !s.demo {
+		go s.bot.loop(ctx)
+	}
 	if !s.demo {
 		go s.rescueLoop(ctx)
 	}

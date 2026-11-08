@@ -16,6 +16,7 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"checks":   s.health.snapshot(),
 		"events":   healthEvents(s.events.recent(50)),
 		"channels": ch,
+		"bot":      s.bot.status(),
 		"seq":      s.events.lastSeq(),
 	})
 }

@@ -442,6 +442,7 @@ a.hop:hover { border-color: rgba(var(--a-rgb), .55); }
 
 .stats.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); padding-top: 0; border-top: 0; }
 .stats.c4 { padding-top: 0; border-top: 0; }
+.stats.c5 { grid-template-columns: repeat(5, minmax(0, 1fr)); padding-top: 0; border-top: 0; }
 .stats .off dd { color: var(--fg-3); }
 .stats dd.sub { font-size: .76rem; color: var(--fg-2); font-weight: 400; }
 .stats dd .dot { margin-right: 4px; vertical-align: 1px; }
@@ -681,6 +682,7 @@ body.stale main { filter: saturate(.3) brightness(.8); transition: filter .4s; }
   .chart-wrap { height: 190px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stats.c3 { grid-template-columns: minmax(0, 1fr); }
+  .stats.c5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kv.cols { grid-template-columns: auto 1fr; }
   .gauges { gap: 4px; }
   .toolbar { padding: 10px; }

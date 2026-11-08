@@ -28,7 +28,7 @@ English · [简体中文](README.zh-CN.md)
 | --- | --- |
 | Overview | Quick actions (proxy mode, exit node, speed test, subscription update, connections, Wi-Fi band, restart proxy, reboot), cards that open the matching detail, live WAN throughput chart, signal (RSRP/SINR/band) with history, egress node and proxy chain, Tailscale reachability probe, monthly data usage, battery/CPU/memory/temperature gauges, connected clients, health checks and their events |
 | Proxy | mihomo groups and nodes, switch nodes, latency tests, rule/global/direct mode, update subscriptions and rule sets, live connections with filter and "close all" |
-| Device | Hotspot band (2.4 GHz or 5 GHz — the F50 runs one at a time) or off, SSID/password/visibility per band, max clients (up to the system limit), connected devices, SMS (inbox, send, verification codes forwarded to Telegram or WhatsApp), alert and log shipping status, software update, remote diagnostics results, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme, light/dark and language |
+| Device | Hotspot band (2.4 GHz or 5 GHz — the F50 runs one at a time) or off, SSID/password/visibility per band, max clients (up to the system limit), connected devices, SMS (inbox, send, verification codes forwarded to Telegram, Feishu or WhatsApp), a Feishu bot to check and control the device from chat, alert and log shipping status, software update, remote diagnostics results, HTTPS & app install guide, restart proxy, reboot, sync the device clock, console password, theme, light/dark and language |
 | Logs | mihomo, Box for Root, Glovebox and Android logcat — level filter, grep with highlight, follow/pause, wrap |
 
 Keyboard: `1`–`4` switch pages, `/` focuses the filter.
@@ -143,7 +143,11 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 | `whatsapp_url`, `whatsapp_key` | | [WAHA](#sms) server and its API key; with `whatsapp_chat` they enable WhatsApp |
 | `whatsapp_chat` | | Number (international format) or WAHA chat ID that receives SMS on WhatsApp |
 | `whatsapp_session` | `default` | WAHA session to send from |
-| `sms_forward` | `telegram`, `whatsapp`, `webhook` | Channels that forward each SMS that arrives; empty forwards none |
+| `feishu_webhook`, `feishu_secret` | | Feishu group custom bot webhook and its signing secret; the webhook enables Feishu alerts |
+| `feishu_app_id`, `feishu_app_secret` | | Feishu self-built app; both enable the [Feishu bot](#feishu-bot) |
+| `feishu_bot_users` | | open_ids the Feishu bot obeys, added by binding |
+| `feishu_domain` | `https://open.feishu.cn` | Feishu Open Platform; `https://open.larksuite.com` for Lark |
+| `sms_forward` | `telegram`, `feishu`, `whatsapp`, `webhook` | Channels that forward each SMS that arrives; empty forwards none |
 | `log_push_url` | | Loki push endpoint for logs and events; `user:password@` in the URL is sent as basic auth |
 | `dns_probe` | `127.0.0.1:1053` | mihomo DNS listener asked by the DNS check; empty skips that part |
 | `update_url` | `update.json` of the latest GitHub release | Signed release manifest checked for [remote upgrades](#remote-upgrade); empty turns them off |
@@ -173,11 +177,12 @@ The F50 has no RTC battery: after a power cut it boots at an old date until the 
 sets the time. Glovebox notices that the clock is behind the last time it saw, holds alerts and
 log shipping until it is corrected, and then fixes the timestamps of the events in between.
 
-Three optional channels report the events, each enabled by its keys in the configuration:
+Four optional channels report the events, each enabled by its keys in the configuration:
 
 - **Telegram**: create a bot with [@BotFather](https://t.me/BotFather), send it a message, and
   read the chat ID from `https://api.telegram.org/bot<token>/getUpdates`. Failure alerts include
   the latest mihomo warnings.
+- **Feishu**: a card per event, through the [Feishu bot](#feishu-bot) or a group's custom bot.
 - **Webhook**: every event is POSTed as JSON (`device`, `time`, `check`, `state`, `msg`, `dur`,
   `text`).
 - **Logs**: the mihomo, Box for Root and Glovebox logs and the events are pushed with the Loki
@@ -218,6 +223,8 @@ Device tab shows how many are unread. Glovebox reads them through the vendor web
 
 - **Telegram** (the alert bot): sender and time, the verification code on a line of its own (a tap
   copies it), then the text.
+- **Feishu**: a card titled with the verification code, which notifications show; through the
+  bot it has buttons to reply and delete.
 - **WhatsApp**: through a [WAHA](https://waha.devlike.pro) server (WhatsApp HTTP API) that you run,
   logged in to a WhatsApp account as a linked device. The code comes first. Only SMS goes this way,
   not health alerts.
@@ -246,6 +253,48 @@ of those. WAHA is not an official client and WhatsApp may restrict accounts it f
 account is the safer sender. Like the other channels, the device reaches WAHA through
 `report_proxy`. Sending an SMS may cost money, so the console asks first; numbers are digits with
 an optional leading `+`, and a message has at most 500 characters.
+
+## Feishu bot
+
+A Feishu (Lark) bot runs inside Glovebox. In a private chat with it you check the device and act
+on it, and alerts and SMS arrive there as cards:
+
+| Send | Card | Buttons |
+| --- | --- | --- |
+| `status` | Network, signal, data this month, hotspot devices, node and mode, Tailscale, failing checks, version | Refresh, and the other cards |
+| `sms` | The latest 5 messages with their codes | Reply, delete, new message (asks before sending) |
+| `sms <number> <text>` | Asks before sending | Send, cancel |
+| `proxy` | The main group's node and the mode | Switch node from a menu, test delays, rule/global/direct |
+| `device` | Version, update, Tailscale | Check for and install updates, check Tailscale, test alerts, restart Box, reboot (these ask first) |
+
+Any other text shows a menu; the commands also have Chinese words. The bot connects to Feishu
+over the long connection of the official SDKs (a WebSocket the device opens), so it needs no
+public address. It connects directly, not through `report_proxy`, so that it still works when
+mihomo is down. A click that is more than a minute old, for instance one that waited while the
+device was off, changes nothing, and a confirmation expires after two minutes.
+
+Set it up in your own Feishu team (a free one with only you in it keeps the messages out of an
+employer's tenant):
+
+1. In the [developer console](https://open.feishu.cn/app), create a self-built app and add the
+   bot feature.
+2. Add the permissions `im:message.p2p_msg:readonly` (receive messages users send the bot) and
+   `im:message:send_as_bot` (send and update messages as the app).
+3. Import the app credentials, then restart Glovebox; the Device page shows "bot connected":
+   ```sh
+   echo '{"feishu_app_id":"cli_...","feishu_app_secret":"..."}' \
+     | su -c '/data/adb/modules/glovebox/bin/glovebox config import'
+   ```
+4. Under Events & callbacks, choose the long connection for both events and callbacks (Feishu
+   only saves that while the device is connected), subscribe to `im.message.receive_v1`, and add
+   the callback `card.action.trigger`.
+5. Limit the app's availability to yourself and publish a version.
+6. The Device page shows a binding code while nobody is bound: send `bind <code>` to the bot.
+   Your open_id is stored in `feishu_bot_users`; everyone else gets "not authorized".
+
+Without an app, a group's custom bot is a simpler channel for alerts and SMS: set `feishu_webhook`,
+and `feishu_secret` when the bot verifies signatures. Once someone is bound to the app bot, the
+Feishu channel uses it instead. Messages and SMS go through Feishu's servers.
 
 ## Remote upgrade
 
@@ -367,6 +416,9 @@ which is why Glovebox talks to 192.168.0.1 rather than loopback.
   signed SHA-256 and size, and roll back a version that does not start.
 - SMS can only be read and sent from a logged-in console; the text of a message is never written
   to the shipped logs.
+- The Feishu bot only obeys the open_ids bound with a code from the logged-in console, ignores
+  group chats and clicks older than a minute, and asks before sending SMS, restarting or
+  installing; it never shows the Wi-Fi password.
 - Diagnostics jobs need a signature by the same keys, name one device, expire within 24 hours and
   run once; their probes only read, apart from a temporary mihomo log level.
 - Glovebox runs as root and can reboot the device and change Wi-Fi settings — treat the console

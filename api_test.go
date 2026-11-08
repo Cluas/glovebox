@@ -21,7 +21,7 @@ type testClient struct {
 func newTestClient(t *testing.T) *testClient {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	s, err := newDemoServer(ctx, t.TempDir(), "127.0.0.1:0")
+	s, err := newDemoServer(ctx, demoDir(t), "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,8 +91,8 @@ func TestAPIAuthAndErrors(t *testing.T) {
 		}
 	}
 
-	// the demo reports to an in-process fake Telegram, WAHA and Loki
-	if code, out := c.do("POST", "/api/report/test", `{}`, true); code != http.StatusOK || fmt.Sprint(out["sent"]) != "[logs telegram whatsapp]" {
+	// the demo reports to an in-process fake Telegram, Feishu bot, WAHA and Loki
+	if code, out := c.do("POST", "/api/report/test", `{}`, true); code != http.StatusOK || fmt.Sprint(out["sent"]) != "[feishu logs telegram whatsapp]" {
 		t.Errorf("report test: %d %v", code, out)
 	}
 	code, hl := c.do("GET", "/api/health", "", false)
@@ -114,11 +114,11 @@ func TestAPIAuthAndErrors(t *testing.T) {
 }
 
 func TestReportTestWithoutChannels(t *testing.T) {
-	s, err := newDemoServer(t.Context(), t.TempDir(), "127.0.0.1:0")
+	s, err := newDemoServer(t.Context(), demoDir(t), "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.cfg.c.TelegramToken, s.cfg.c.LogPushURL, s.cfg.c.WhatsAppURL = "", "", ""
+	s.cfg.c.TelegramToken, s.cfg.c.LogPushURL, s.cfg.c.WhatsAppURL, s.cfg.c.FeishuWebhook = "", "", "", ""
 	rec := httptest.NewRecorder()
 	s.handleReportTest(rec, httptest.NewRequest("POST", "/api/report/test", nil))
 	var out map[string]any

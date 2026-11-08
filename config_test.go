@@ -69,9 +69,10 @@ func TestRedacted(t *testing.T) {
 	c := Config{
 		PasswordHash: "h", SessionSecret: "s", TelegramToken: "123:tok", TelegramChat: "42",
 		WebhookURL: "https://hooks.example/abc?key=k", LogPushURL: "http://user:pw@logs.example:9428/insert/loki/api/v1/push",
+		WhatsAppKey: "waha-key", FeishuWebhook: "https://open.feishu.cn/open-apis/bot/v2/hook/fs-tok", FeishuSecret: "fs-sec",
 	}.redacted()
 	b, _ := json.Marshal(c)
-	for _, secret := range []string{`"h"`, `"s"`, "123:tok", "abc", "key=k", ":pw@"} {
+	for _, secret := range []string{`"h"`, `"s"`, "123:tok", "abc", "key=k", ":pw@", "waha-key", "fs-tok", "fs-sec"} {
 		if strings.Contains(string(b), secret) {
 			t.Errorf("%s not masked: %s", secret, b)
 		}

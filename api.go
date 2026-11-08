@@ -96,7 +96,8 @@ func (s *server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		"hostnames": c.Hostnames,
 		"tailscale": c.tailscaleEnabled(),
 		"demo":      s.demo,
-		"report":    map[string]bool{"telegram": c.telegramEnabled(), "webhook": c.WebhookURL != "", "whatsapp": c.whatsAppEnabled(), "logs": c.LogPushURL != ""},
+		"report": map[string]bool{"telegram": c.telegramEnabled(), "feishu": c.feishuEnabled() || s.bot.ready(c), "webhook": c.WebhookURL != "",
+			"whatsapp": c.whatsAppEnabled(), "logs": c.LogPushURL != ""},
 	}
 	if s.certs != nil {
 		out["https"] = s.certs.info(c)

@@ -38,7 +38,7 @@ func (s *server) handleSMS(w http.ResponseWriter, r *http.Request) {
 	for _, ch := range []struct {
 		name string
 		on   bool
-	}{{"telegram", c.telegramEnabled()}, {"whatsapp", c.whatsAppEnabled()}, {"webhook", c.WebhookURL != ""}} {
+	}{{"telegram", c.telegramEnabled()}, {"feishu", c.feishuEnabled() || s.bot.ready(c)}, {"whatsapp", c.whatsAppEnabled()}, {"webhook", c.WebhookURL != ""}} {
 		if ch.on && smsForwards(c, ch.name) {
 			forward = append(forward, ch.name)
 		}

@@ -26,7 +26,7 @@
 | --- | --- |
 | 概览 | 快捷操作（代理模式、出口节点、测速、更新订阅、连接、Wi-Fi 频段、重启代理、重启设备）、点卡片直达对应详情、WAN 实时吞吐曲线、信号（RSRP/SINR/频段）及历史、出口节点和代理链、Tailscale 连通性探测、本月流量、电量/CPU/内存/温度、已连接设备、健康检查及其事件 |
 | 代理 | mihomo 分组和节点、切换节点、测速、规则/全局/直连模式、更新订阅和规则集、实时连接（可筛选、一键断开） |
-| 设备 | 热点频段（2.4 GHz 或 5 GHz，F50 同一时间只能开一个）或关闭，每个频段的名称/密码/隐藏、最大连接数（不超过系统上限）、已连接设备、短信（收件箱、发短信、验证码推送到 Telegram 或 WhatsApp）、告警和日志推送状态、软件更新、远程诊断结果、HTTPS 与安装指引、重启代理、重启设备、校正设备时间、控制台密码、主题、深浅色和语言 |
+| 设备 | 热点频段（2.4 GHz 或 5 GHz，F50 同一时间只能开一个）或关闭，每个频段的名称/密码/隐藏、最大连接数（不超过系统上限）、已连接设备、短信（收件箱、发短信、验证码推送到 Telegram、飞书或 WhatsApp）、在飞书里查看和操作设备的机器人、告警和日志推送状态、软件更新、远程诊断结果、HTTPS 与安装指引、重启代理、重启设备、校正设备时间、控制台密码、主题、深浅色和语言 |
 | 日志 | mihomo、Box for Root、Glovebox、Android logcat；级别筛选、grep 高亮、跟随/暂停、自动换行 |
 
 键盘：`1`–`4` 切换页面，`/` 聚焦筛选框。
@@ -131,7 +131,11 @@ echo '{"tailscale_proxy":"Tailscale","tailscale_probe":"http://100.64.0.1/"}' \
 | `whatsapp_url`, `whatsapp_key` | | [WAHA](#短信) 地址和它的 API key；和 `whatsapp_chat` 一起设置后启用 WhatsApp |
 | `whatsapp_chat` | | 在 WhatsApp 上收短信的号码（国际格式）或 WAHA 的 chat ID |
 | `whatsapp_session` | `default` | 用来发送的 WAHA 会话 |
-| `sms_forward` | `telegram`, `whatsapp`, `webhook` | 新短信推送到哪些渠道；为空则不推送 |
+| `feishu_webhook`, `feishu_secret` | | 飞书群自定义机器人的 webhook 和签名密钥；设置 webhook 后启用飞书告警 |
+| `feishu_app_id`, `feishu_app_secret` | | 飞书企业自建应用的凭证；两者都设置后启用[飞书机器人](#飞书机器人) |
+| `feishu_bot_users` | | 飞书机器人听从的 open_id，绑定时自动添加 |
+| `feishu_domain` | `https://open.feishu.cn` | 飞书开放平台地址；国际版 Lark 填 `https://open.larksuite.com` |
+| `sms_forward` | `telegram`, `feishu`, `whatsapp`, `webhook` | 新短信推送到哪些渠道；为空则不推送 |
 | `log_push_url` | | 日志和事件的 Loki 推送地址；URL 里的 `user:password@` 作为 Basic 认证发送 |
 | `dns_probe` | `127.0.0.1:1053` | DNS 检查要询问的 mihomo DNS 监听地址；为空则跳过这一项 |
 | `update_url` | GitHub 最新 Release 的 `update.json` | [远程升级](#远程升级)检查的签名清单地址；为空则关闭远程升级 |
@@ -156,10 +160,11 @@ Glovebox 每 30 秒检查一次：mihomo、它的 DNS（热点客户端被转发
 F50 没有 RTC 电池，断电后开机时间会回到很早的日期，直到蜂窝网络授时。Glovebox 发现时钟比上次见到的
 时间还早时，会暂停告警和日志推送，等时间校正后再补发，并修正这段时间里事件的时间戳。
 
-事件可以通过三个可选渠道上报，在配置里填好对应字段就会启用：
+事件可以通过四个可选渠道上报，在配置里填好对应字段就会启用：
 
 - **Telegram**：用 [@BotFather](https://t.me/BotFather) 创建 bot，给它发一条消息，再从
   `https://api.telegram.org/bot<token>/getUpdates` 里找到 chat ID。异常告警会附上 mihomo 最近的警告日志。
+- **飞书**：每个事件一张卡片，经[飞书机器人](#飞书机器人)或群里的自定义机器人发送。
 - **Webhook**：每个事件以 JSON POST 一次（`device`、`time`、`check`、`state`、`msg`、`dur`、
   `text`）。
 - **日志**：mihomo、Box for Root、Glovebox 的日志和健康事件按 Loki 推送协议发送，Grafana Loki、
@@ -195,6 +200,7 @@ docker run -d --name victorialogs --restart unless-stopped -p 9428:9428 \
 网页接口读一次。每条新短信都会生成一个 `sms` 事件，推送到 `sms_forward` 里列出的渠道：
 
 - **Telegram**（告警用的 bot）：发件人和时间，验证码单独一行（点一下就能复制），下面是全文。
+- **飞书**：卡片标题就是验证码，通知里直接能看到；经机器人发送时带回复和删除按钮。
 - **WhatsApp**：经你自己运行的 [WAHA](https://waha.devlike.pro)（WhatsApp HTTP API）发送，它以「已关联
   设备」的身份登录一个 WhatsApp 号。验证码放在最前面。这个渠道只发短信，不发健康告警。
 - **Webhook**：事件 JSON 里多一个 `sms` 对象（`id`、`from`、`text`、`code`、`at`）。
@@ -219,6 +225,41 @@ echo '{"whatsapp_url":"http://192.168.1.10:3000","whatsapp_key":"<random key>",
 的对话里，WhatsApp 对这种消息可能不提醒。WAHA 不是官方客户端，WhatsApp 可能限制它认为异常的账号，
 用另一个号来发更稳妥。和其它渠道一样，设备经 `report_proxy` 访问 WAHA。发短信可能要花钱，控制台会先
 确认；号码只能是数字，开头可以带 `+`，每条最多 500 个字。
+
+## 飞书机器人
+
+Glovebox 里内置了一个飞书机器人。和它单聊就能查看和操作设备，告警和短信也会以卡片发到这里：
+
+| 发送 | 卡片 | 按钮 |
+| --- | --- | --- |
+| `状态` | 网络、信号、本月流量、热点设备数、节点和模式、Tailscale、异常的检查项、版本 | 刷新，以及其它卡片 |
+| `短信` | 最近 5 条短信和其中的验证码 | 回复、删除、写短信（发送前确认） |
+| `短信 号码 内容` | 发送前先确认 | 发送、取消 |
+| `节点` | 主分组当前节点和模式 | 下拉切换节点、测速、规则/全局/直连 |
+| `设备` | 版本、更新、Tailscale | 检查和安装更新、检查 Tailscale、测试推送、重启 Box、重启设备（这些都会先确认） |
+
+发其它内容会回一个菜单；命令也可以用英文。机器人用飞书官方 SDK 的长连接（设备主动建立的 WebSocket）
+连接飞书，所以不需要公网地址。它直连飞书，不走 `report_proxy`，这样 mihomo 挂了也能用它来处理。
+超过一分钟的点击（比如设备关机时点的、开机后才送到）不会改动任何东西，确认卡片两分钟后失效。
+
+在你自己的飞书团队里配置（可以免费建一个只有你自己的团队，消息就不会经过公司的租户）：
+
+1. 在[开发者后台](https://open.feishu.cn/app)创建企业自建应用，添加「机器人」能力。
+2. 开通权限 `im:message.p2p_msg:readonly`（读取用户发给机器人的单聊消息）和
+   `im:message:send_as_bot`（以应用的身份发消息，也用来更新卡片）。
+3. 导入应用凭证后重启 Glovebox，「设备」页会显示「机器人已连接」：
+   ```sh
+   echo '{"feishu_app_id":"cli_...","feishu_app_secret":"..."}' \
+     | su -c '/data/adb/modules/glovebox/bin/glovebox config import'
+   ```
+4. 在「事件与回调」里，事件和回调都选择长连接（设备在线时飞书才允许保存），订阅事件
+   `im.message.receive_v1`，添加回调 `card.action.trigger`。
+5. 可用范围只选你自己，然后发布版本。
+6. 还没有绑定主人时，「设备」页会显示绑定码，给机器人发送 `绑定 <绑定码>` 即可。你的 open_id 会存进
+   `feishu_bot_users`；其他人发消息只会收到「未授权」。
+
+不想建应用的话，群里的自定义机器人是更简单的告警和短信渠道：设置 `feishu_webhook`，机器人开了签名校验
+就再设置 `feishu_secret`。应用机器人绑定主人以后，飞书渠道就改用它。消息和短信会经过飞书的服务器。
 
 ## 远程升级
 
@@ -319,6 +360,8 @@ curl http://192.0.2.10:9428/select/logsql/query --data-urlencode 'query=_time:1h
 - 修改状态的请求必须带 `X-Glovebox: 1` 请求头（防 CSRF）；响应带严格的 Content-Security-Policy。
 - 远程升级只安装由受信任的 ed25519 密钥签名、且 zip 与签名里的 SHA-256 和大小一致的版本，新版本起不来会自动回滚。
 - 只有登录控制台后才能看短信和发短信；短信正文不会写进上报的日志。
+- 飞书机器人只听从用登录后的控制台里的绑定码绑定的 open_id，不处理群聊和超过一分钟的点击，发短信、
+  重启和安装更新前都会先确认，也从不显示 Wi-Fi 密码。
 - 诊断任务必须由同一套密钥签名、只指定一台设备、24 小时内过期且只执行一次；除了临时的 mihomo 日志级别，探测都是只读的。
 - Glovebox 以 root 运行，可以重启设备、修改 Wi-Fi 设置，请妥善保管控制台密码。报告安全问题见
   [SECURITY.md](SECURITY.md)。

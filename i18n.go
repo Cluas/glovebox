@@ -4,14 +4,34 @@ import (
 	"encoding/json"
 	"io/fs"
 	"regexp"
+	"sort"
 	"sync"
 )
 
 var (
-	localesMu sync.Mutex
-	locales   = map[string]map[string]string{}
-	varRe     = regexp.MustCompile(`\{(\w+)\}`)
+	localesMu  sync.Mutex
+	locales    = map[string]map[string]string{}
+	localeList []string
+	varRe      = regexp.MustCompile(`\{(\w+)\}`)
 )
+
+// localeNames lists the languages of web/i18n/index.json
+func localeNames() []string {
+	localesMu.Lock()
+	defer localesMu.Unlock()
+	if localeList == nil {
+		var idx map[string]string
+		if b, err := fs.ReadFile(webFS, "web/i18n/index.json"); err == nil {
+			json.Unmarshal(b, &idx)
+		}
+		localeList = []string{}
+		for k := range idx {
+			localeList = append(localeList, k)
+		}
+		sort.Strings(localeList)
+	}
+	return localeList
+}
 
 func locale(lang string) map[string]string {
 	localesMu.Lock()

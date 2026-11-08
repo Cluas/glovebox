@@ -53,11 +53,11 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 	}
 	_, mixedPort, _ := net.SplitHostPort(mixedAddr)
 	mh.mixedPort, _ = strconv.Atoi(mixedPort)
-	// stands in for the Telegram Bot API and a Loki server
+	// stands in for the Telegram Bot API, WAHA, a Feishu bot and a Loki server
 	sinkAddr, err := serveLocal(ctx, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.Copy(io.Discard, r.Body)
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"ok":true}`)
+		io.WriteString(w, `{"ok":true,"code":0,"msg":"success"}`)
 	}))
 	if err != nil {
 		return nil, err
@@ -97,6 +97,7 @@ func newDemoServer(ctx context.Context, dir, listen string) (*server, error) {
 	c.DeviceName = "demo"
 	c.TelegramToken, c.TelegramChat = "demo", "demo"
 	c.WhatsAppURL, c.WhatsAppChat = "http://"+sinkAddr, "15555550142"
+	c.FeishuWebhook = "http://" + sinkAddr + "/open-apis/bot/v2/hook/demo"
 	c.LogPushURL = "http://" + sinkAddr + "/insert/loki/api/v1/push"
 	rel, err := newFakeRelease(time.Now(), c.DeviceName)
 	if err != nil {

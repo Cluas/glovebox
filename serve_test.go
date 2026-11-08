@@ -6,9 +6,30 @@ import (
 	"crypto/x509"
 	"net"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 )
+
+// demoDir is the data folder of a demo server. Its goroutines may still write there while the test
+// ends, which makes t.TempDir's cleanup fail, so removal is retried.
+func demoDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "glovebox-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		for range 50 {
+			if os.RemoveAll(dir) == nil {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Errorf("could not remove %s", dir)
+	})
+	return dir
+}
 
 func freeAddr(t *testing.T) string {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -23,7 +44,7 @@ func freeAddr(t *testing.T) string {
 func TestServeHTTPAndHTTPS(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	dir := t.TempDir()
+	dir := demoDir(t)
 	s, err := newDemoServer(ctx, dir, freeAddr(t))
 	if err != nil {
 		t.Fatal(err)

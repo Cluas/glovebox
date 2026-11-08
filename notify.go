@@ -100,6 +100,8 @@ type notifier struct {
 	chans  []*channel
 	// Bot API base URL; the demo and the tests point it at a fake server
 	telegramAPI string
+	// the Feishu bot carries the feishu channel once someone is bound to it; nil without one
+	bot *feishuBot
 }
 
 func newNotifier(cfg *configStore, events *eventLog, h *health, out *outbound, dataDir string) *notifier {
@@ -108,14 +110,7 @@ func newNotifier(cfg *configStore, events *eventLog, h *health, out *outbound, d
 		{
 			name:    "telegram",
 			enabled: Config.telegramEnabled,
-			// started and clock_fixed are only logged: the device starts with every drive. A new
-			// version is announced (notify mode) because nobody may open the console to see it.
-			wants: func(c Config, e event) bool {
-				if e.Check == "sms" {
-					return smsForwards(c, "telegram")
-				}
-				return e.State != "info" || e.Check == "update" || e.Check == "rescue"
-			},
+			wants:   announces("telegram"),
 			send: func(ctx context.Context, hc *http.Client, c Config, evs []event, dropped int64) (int, error) {
 				return sendTelegram(ctx, hc, n.telegramAPI, c, evs, dropped)
 			},
@@ -131,6 +126,17 @@ func newNotifier(cfg *configStore, events *eventLog, h *health, out *outbound, d
 			enabled: Config.whatsAppEnabled,
 			wants:   func(c Config, e event) bool { return e.Check == "sms" && smsForwards(c, "whatsapp") },
 			send:    sendWhatsApp,
+		},
+		{
+			name:    "feishu",
+			enabled: func(c Config) bool { return c.feishuEnabled() || n.bot.ready(c) },
+			wants:   announces("feishu"),
+			send: func(ctx context.Context, hc *http.Client, c Config, evs []event, dropped int64) (int, error) {
+				if n.bot.ready(c) {
+					return n.bot.push(ctx, c, evs, dropped)
+				}
+				return sendFeishu(ctx, hc, c, evs, dropped)
+			},
 		},
 	}
 	last := events.lastSeq()
@@ -150,6 +156,19 @@ func newNotifier(cfg *configStore, events *eventLog, h *health, out *outbound, d
 		ch.cursor = cur
 	}
 	return n
+}
+
+// announces is what a chat channel (Telegram, Feishu) takes: failures and recoveries, and SMS when
+// sms_forward names the channel. started and clock_fixed are only logged: the device starts with
+// every drive. A new version is announced (notify mode) because nobody may open the console to
+// see it, and so is a rescue from Magisk's safe mode.
+func announces(name string) func(Config, event) bool {
+	return func(c Config, e event) bool {
+		if e.Check == "sms" {
+			return smsForwards(c, name)
+		}
+		return e.State != "info" || e.Check == "update" || e.Check == "rescue"
+	}
 }
 
 func (n *notifier) save() {
@@ -385,19 +404,23 @@ func eventText(lang, device string, e event) string {
 	return tr(lang, "ev."+e.Check, map[string]string{"msg": e.Msg, "dur": fmtDuration(e.Dur)})
 }
 
+// eventMark is the emoji that leads an alert
+func eventMark(e event) string {
+	switch {
+	case e.Check == "update" && e.State == "info":
+		return "\U0001F195"
+	case e.Check == "rescue":
+		return "\u26A0\uFE0F"
+	}
+	return map[string]string{"fail": "\U0001F534", "ok": "\U0001F7E2", "test": "\U0001F514"}[e.State]
+}
+
 func telegramBlock(lang, device string, e event, withLog bool) string {
 	if e.SMS != nil {
 		return telegramSMS(lang, e)
 	}
-	mark := map[string]string{"fail": "\U0001F534", "ok": "\U0001F7E2", "test": "\U0001F514"}[e.State]
-	if e.Check == "update" && e.State == "info" {
-		mark = "\U0001F195"
-	}
-	if e.Check == "rescue" {
-		mark = "\u26A0\uFE0F"
-	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s <b>%s</b>", mark, html.EscapeString(eventText(lang, device, e)))
+	fmt.Fprintf(&b, "%s <b>%s</b>", eventMark(e), html.EscapeString(eventText(lang, device, e)))
 	if e.State != "test" {
 		fmt.Fprintf(&b, " · %s", e.Time.In(time.Local).Format("01-02 15:04:05"))
 	}
