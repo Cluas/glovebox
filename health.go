@@ -104,12 +104,17 @@ type health struct {
 	badWall  time.Time     // wall clock when it was found wrong
 	badMono  time.Duration // clockNow's monotonic time at that moment
 	badSeq   int64         // first event recorded with the wrong clock
+
+	dnsmasq *dnsmasqWatch // nil in the demo
 }
 
 func newHealth(s *server, events *eventLog, dataDir string) *health {
 	h := &health{s: s, events: events, checks: map[string]*checkState{}, start: time.Now()}
 	for _, n := range healthChecks {
 		h.checks[n] = &checkState{Name: n}
+	}
+	if !s.demo {
+		h.dnsmasq = newDNSMasqWatch("/proc")
 	}
 	if dataDir != "" {
 		h.clockPath = filepath.Join(dataDir, "clock")
@@ -159,6 +164,9 @@ func (h *health) runRound(ctx context.Context) {
 	h.mu.Lock()
 	h.round++
 	h.mu.Unlock()
+	if h.dnsmasq != nil {
+		h.dnsmasq.check(time.Now())
+	}
 	raw := map[string]error{}
 	down := func(n string) bool { return isFail(raw[n]) }
 	for _, name := range probeOrder {

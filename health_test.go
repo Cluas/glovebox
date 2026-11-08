@@ -25,6 +25,7 @@ func newTestHealth(t *testing.T, dataDir string) (*health, map[string]error) {
 	}
 	s.events = openEventLog(evPath)
 	h := newHealth(s, s.events, dataDir)
+	h.dnsmasq = nil
 	res := map[string]error{}
 	for _, n := range probeOrder {
 		h.probes[n] = func(context.Context, func(string) bool) error { return res[n] }

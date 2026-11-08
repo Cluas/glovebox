@@ -179,6 +179,12 @@ The F50 has no RTC battery: after a power cut it boots at an old date until the 
 sets the time. Glovebox notices that the clock is behind the last time it saw, holds alerts and
 log shipping until it is corrected, and then fixes the timestamps of the events in between.
 
+The hotspot's DNS forwarder, dnsmasq, binds the hotspot interface's IPv6 addresses when tethering
+starts. When Box turns IPv6 off (`ipv6="false"`) those addresses go away, the system destroys the
+sockets bound to them, and dnsmasq spins at a full CPU core from then on, after every boot.
+When dnsmasq keeps using more than half a core, Glovebox sends it the interface list again, as the
+system does when tethering starts, and it binds the addresses that exist.
+
 Four optional channels report the events, each enabled by its keys in the configuration:
 
 - **Telegram**: create a bot with [@BotFather](https://t.me/BotFather), send it a message, and
