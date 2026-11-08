@@ -168,7 +168,9 @@ and log shipping got), `sms.json` (the last message forwarded), `rescued` (what 
 Every 30 seconds Glovebox checks mihomo, its DNS (the listener hotspot clients are redirected to,
 and the upstream servers behind it), the main proxy group, Tailscale, cellular data, the hotspot,
 the clock and free memory. A check counts as failing after two bad rounds (cellular data: after
-5 minutes, so short coverage gaps stay quiet) and recovers after one good round. Checks that
+5 minutes, so short coverage gaps stay quiet; the proxy is tested once a minute, and since a
+cross-border request over cellular stalls for a few seconds now and then, a timed-out test is
+retried at once and only three failed tests in a row count) and recovers after one good round. Checks that
 depend on a failing one are skipped, so an alert names the cause: no DNS or proxy alerts while
 mihomo is down, no proxy alerts while cellular data is. The Overview page lists the checks and
 their state changes.

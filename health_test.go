@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,8 +105,9 @@ func TestHealthDurationsAndLog(t *testing.T) {
 			"time=\"x\" level=error msg=\"fatal-ish\"\n"), 0o600)
 	t0 := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 	fail := errors.New("Timeout")
-	h.observe("proxy", fail, t0)
-	h.observe("proxy", fail, t0.Add(30*time.Second))
+	for i := range failRounds("proxy") {
+		h.observe("proxy", fail, t0.Add(time.Duration(i)*time.Minute))
+	}
 	e := h.events.recent(1)[0]
 	if e.State != "fail" || len(e.Log) != 2 || !strings.Contains(e.Log[0], "i/o timeout") {
 		t.Fatalf("failure event: %+v", e)
@@ -204,5 +208,51 @@ func TestEventLogPersistence(t *testing.T) {
 	}
 	if r := l2.recent(2); r[0].Seq != 154 || r[1].Seq != 153 {
 		t.Fatalf("recent order: %d %d", r[0].Seq, r[1].Seq)
+	}
+}
+
+// a cross-border test over cellular stalls now and then: one timeout is retried at once
+func TestProbeProxyRetries(t *testing.T) {
+	var delays []string
+	mh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/proxies":
+			w.Write([]byte(`{"proxies":{"Proxy":{"name":"Proxy","type":"Selector","now":"a"}}}`))
+		case "/proxies/Proxy/delay":
+			if len(delays) == 0 {
+				t.Fatal("empty script")
+			}
+			d := delays[0]
+			delays = delays[1:]
+			if d == "" {
+				w.WriteHeader(http.StatusGatewayTimeout)
+				w.Write([]byte(`{"message":"Timeout"}`))
+				return
+			}
+			w.Write([]byte(`{"delay":` + d + `}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(mh.Close)
+	h, _ := newTestHealth(t, "")
+	h.s.mihomo = newMihomo(mh.URL, "")
+	h.s.cfg.c.MainGroup = "Proxy"
+	h.round = 1
+	for _, tc := range []struct {
+		script []string
+		want   string
+	}{
+		{[]string{"120"}, ""},
+		{[]string{"", "130"}, ""},
+		{[]string{"0", "140"}, ""},
+		{[]string{"", ""}, "Proxy: Timeout"},
+		{[]string{"", "0"}, "Proxy: no response"},
+	} {
+		delays = tc.script
+		err := h.probeProxy(context.Background(), nil)
+		if got := fmt.Sprint(err); (tc.want == "" && err != nil) || (tc.want != "" && got != tc.want) || len(delays) != 0 {
+			t.Errorf("%q: %v, %d tests left", tc.script, err, len(delays))
+		}
 	}
 }

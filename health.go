@@ -18,7 +18,8 @@ import (
 
 // health runs the checks every 30 seconds and records state changes as events. A check counts as
 // failing after two failed rounds (wan: after 5 minutes, since a car passes through tunnels and car
-// parks) and recovers after one good round. Checks that depend on a failing one are skipped, so an
+// parks; proxy: after three tests, since a cross-border request over cellular stalls now and then)
+// and recovers after one good round. Checks that depend on a failing one are skipped, so an
 // alert names the root cause: no DNS, proxy or Tailscale alerts while mihomo is down, and no proxy,
 // Tailscale or upstream DNS alerts while the cellular link is down.
 
@@ -32,6 +33,8 @@ const (
 	// give up waiting for the clock to be corrected (it may have been set back on purpose)
 	clockGiveUp    = 6 * time.Hour
 	clockSaveEvery = 5 * time.Minute
+	// one proxy delay test; the health check tries twice
+	proxyTestMs = 5000
 )
 
 // healthChecks is the display order
@@ -49,8 +52,11 @@ var healthDeps = map[string][]string{
 
 // failing rounds before a check counts as failing
 func failRounds(name string) int {
-	if name == "wan" {
+	switch name {
+	case "wan":
 		return int(5 * time.Minute / healthEvery)
+	case "proxy":
+		return 3
 	}
 	return 2
 }
@@ -380,7 +386,9 @@ func (h *health) probeDNS(ctx context.Context, down func(string) bool) error {
 	return nil
 }
 
-// probeProxy measures the main group every other round; each test is a request over cellular data
+// probeProxy measures the main group every other round; each test is a request over cellular data.
+// A cross-border request over cellular stalls for a few seconds now and then, so a failed test is
+// retried once before the round counts as failed.
 func (h *health) probeProxy(ctx context.Context, _ func(string) bool) error {
 	h.mu.Lock()
 	skip := h.round%2 == 0
@@ -389,7 +397,7 @@ func (h *health) probeProxy(ctx context.Context, _ func(string) bool) error {
 		return errNoData
 	}
 	c := h.s.cfg.get()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	ps, err := h.s.mihomo.proxies(ctx)
 	if err != nil {
@@ -399,12 +407,18 @@ func (h *health) probeProxy(ctx context.Context, _ func(string) bool) error {
 	if g == "" {
 		return errOff
 	}
-	d, err := h.s.mihomo.proxyDelay(ctx, g, c.DelayURL, 5000)
+	test := func() error {
+		d, err := h.s.mihomo.proxyDelay(ctx, g, c.DelayURL, proxyTestMs)
+		if err == nil && d <= 0 {
+			err = errors.New("no response")
+		}
+		return err
+	}
+	if err = test(); err != nil && ctx.Err() == nil {
+		err = test()
+	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", g, err)
-	}
-	if d <= 0 {
-		return fmt.Errorf("%s: no response", g)
 	}
 	return nil
 }
