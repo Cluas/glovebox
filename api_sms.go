@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"regexp"
@@ -58,23 +59,39 @@ func (s *server) handleSMSSend(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	number := strings.Join(strings.Fields(in.Number), "")
-	text := strings.TrimSpace(in.Text)
-	if !smsNumberRe.MatchString(number) {
-		writeErr(w, http.StatusBadRequest, apiErr("sms_number", "not a phone number: "+in.Number))
+	number, text, err := checkSMS(in.Number, in.Text)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if n := utf8.RuneCountInString(text); n == 0 || n > smsTextMax {
-		writeErr(w, http.StatusBadRequest, apiErr("sms_text", "the text must have 1 to "+strconv.Itoa(smsTextMax)+" characters", "max", smsTextMax))
-		return
-	}
-	if err := s.zte.smsSend(r.Context(), number, text); err != nil {
+	if err := s.sendSMS(r.Context(), number, text); err != nil {
 		writeErr(w, http.StatusBadGateway, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// checkSMS normalizes a message to send: the number without spaces, the text trimmed
+func checkSMS(number, text string) (string, string, error) {
+	n := strings.Join(strings.Fields(number), "")
+	text = strings.TrimSpace(text)
+	if !smsNumberRe.MatchString(n) {
+		return "", "", apiErr("sms_number", "not a phone number: "+number)
+	}
+	if l := utf8.RuneCountInString(text); l == 0 || l > smsTextMax {
+		return "", "", apiErr("sms_text", "the text must have 1 to "+strconv.Itoa(smsTextMax)+" characters", "max", smsTextMax)
+	}
+	return n, text, nil
+}
+
+// sendSMS sends a message checked by checkSMS
+func (s *server) sendSMS(ctx context.Context, number, text string) error {
+	if err := s.zte.smsSend(ctx, number, text); err != nil {
+		return err
+	}
 	// the text stays out of the log, which is shipped
 	log.Printf("sms: sent to %s (%d characters)", number, utf8.RuneCountInString(text))
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	return nil
 }
 
 func (s *server) handleSMSDelete(w http.ResponseWriter, r *http.Request) {

@@ -252,23 +252,35 @@ func (s *server) handleSetWiFi(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleBoxRestart(w http.ResponseWriter, r *http.Request) {
-	script := filepath.Join(s.cfg.get().BoxDir, "scripts/box.service")
-	if s.demo {
-		log.Printf("demo: skipping %s restart", script)
-		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-		return
-	}
-	if err := startDetached("/system/bin/sh", script, "restart"); err != nil {
+	if err := s.restartBox(); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	log.Printf("restarting proxy (%s restart)", script)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// restartBox restarts Box for Root, and with it mihomo, in the background
+func (s *server) restartBox() error {
+	script := filepath.Join(s.cfg.get().BoxDir, "scripts/box.service")
+	if s.demo {
+		log.Printf("demo: skipping %s restart", script)
+		return nil
+	}
+	if err := startDetached("/system/bin/sh", script, "restart"); err != nil {
+		return err
+	}
+	log.Printf("restarting proxy (%s restart)", script)
+	return nil
 }
 
 func (s *server) handleReboot(w http.ResponseWriter, r *http.Request) {
 	log.Printf("reboot requested by %s", r.RemoteAddr)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	s.rebootSoon()
+}
+
+// rebootSoon reboots the device in a second, which leaves time to answer the request
+func (s *server) rebootSoon() {
 	if s.demo {
 		return
 	}

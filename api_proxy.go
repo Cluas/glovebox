@@ -89,47 +89,10 @@ func proxyDown(err error) error {
 func (s *server) handleProxies(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	ps, err := s.mihomo.proxies(ctx)
+	groups, mode, err := s.proxyGroups(ctx)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, proxyDown(err))
 		return
-	}
-	cf, _ := s.mihomo.configs(ctx)
-	// subscription nodes only show up in /providers/proxies; merge them for type and delay
-	if pp, err := s.mihomo.providerProxies(ctx); err == nil {
-		for n, p := range pp {
-			if _, ok := ps[n]; !ok {
-				ps[n] = p
-			}
-		}
-	}
-	// main group first, the rest in config order
-	order := groupOrder(ps)
-	if mg := mainGroup(ps, s.cfg.get().MainGroup); mg != "" {
-		rest := []string{mg}
-		for _, n := range order {
-			if n != mg {
-				rest = append(rest, n)
-			}
-		}
-		order = rest
-	}
-	var groups []proxyGroup
-	for _, name := range order {
-		g := ps[name]
-		if g.Hidden || strings.HasPrefix(name, "__") {
-			continue
-		}
-		pg := proxyGroup{Name: name, Type: g.Type, Now: g.Now, Fixed: g.Fixed, Chain: resolveNow(ps, name)}
-		for _, n := range g.All {
-			p := ps[n]
-			pg.Nodes = append(pg.Nodes, proxyNode{Name: n, Type: p.Type, Delay: p.lastDelay(), Alive: p.Alive, Group: len(p.All) > 0})
-		}
-		groups = append(groups, pg)
-	}
-	var mode any
-	if cf != nil {
-		mode = cf["mode"]
 	}
 	pp, _ := s.mihomo.providers(ctx, "proxies")
 	rp, _ := s.mihomo.providers(ctx, "rules")
@@ -326,4 +289,51 @@ func (s *server) handleConnections(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleTSCheck(w http.ResponseWriter, r *http.Request) {
 	s.ts.check(r.Context())
 	writeJSON(w, http.StatusOK, s.ts.status())
+}
+
+// proxyGroups lists the visible groups, the main group first and the rest in config order, with
+// the proxy mode
+func (s *server) proxyGroups(ctx context.Context) ([]proxyGroup, any, error) {
+	ps, err := s.mihomo.proxies(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	cf, _ := s.mihomo.configs(ctx)
+	// subscription nodes only show up in /providers/proxies; merge them for type and delay
+	if pp, err := s.mihomo.providerProxies(ctx); err == nil {
+		for n, p := range pp {
+			if _, ok := ps[n]; !ok {
+				ps[n] = p
+			}
+		}
+	}
+	// main group first, the rest in config order
+	order := groupOrder(ps)
+	if mg := mainGroup(ps, s.cfg.get().MainGroup); mg != "" {
+		rest := []string{mg}
+		for _, n := range order {
+			if n != mg {
+				rest = append(rest, n)
+			}
+		}
+		order = rest
+	}
+	var groups []proxyGroup
+	for _, name := range order {
+		g := ps[name]
+		if g.Hidden || strings.HasPrefix(name, "__") {
+			continue
+		}
+		pg := proxyGroup{Name: name, Type: g.Type, Now: g.Now, Fixed: g.Fixed, Chain: resolveNow(ps, name)}
+		for _, n := range g.All {
+			p := ps[n]
+			pg.Nodes = append(pg.Nodes, proxyNode{Name: n, Type: p.Type, Delay: p.lastDelay(), Alive: p.Alive, Group: len(p.All) > 0})
+		}
+		groups = append(groups, pg)
+	}
+	var mode any
+	if cf != nil {
+		mode = cf["mode"]
+	}
+	return groups, mode, nil
 }

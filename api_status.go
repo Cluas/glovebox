@@ -170,7 +170,11 @@ func parseClients(m map[string]any) []client {
 }
 
 func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	writeJSON(w, http.StatusOK, s.statusData(r.Context()))
+}
+
+// statusData is the overview: cellular, traffic, the device, the proxy and the health checks
+func (s *server) statusData(ctx context.Context) map[string]any {
 	c := s.cfg.get()
 	out := map[string]any{"time": time.Now().Format("2006-01-02 15:04:05"), "unix": time.Now().Unix()}
 	if v := s.update.available(); v != "" {
@@ -259,7 +263,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	out["tailscale"] = s.ts.status()
 	out["health"] = map[string]any{"bad": s.health.bad(), "seq": s.events.lastSeq()}
 	out["errors"] = errs
-	writeJSON(w, http.StatusOK, out)
+	return out
 }
 
 func (s *server) handleClients(w http.ResponseWriter, r *http.Request) {
