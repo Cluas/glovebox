@@ -364,6 +364,7 @@
   "bot.cmd.bind": "bind",
   "bot.menu.title": "Glovebox · {device}",
   "bot.menu.text": "Tap a button, or send: status, sms, proxy, device. To text someone: sms <number> <message>.",
+  "bot.btn.menu": "Menu",
   "bot.btn.status": "Status",
   "bot.btn.sms": "SMS",
   "bot.btn.proxy": "Proxy",

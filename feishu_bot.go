@@ -433,7 +433,7 @@ func (b *feishuBot) act(ctx context.Context, a string, v func(string) string, op
 			return b.failed(err)
 		}
 		return &cardAnswer{Toast: &feishuToast{"success", b.t("sms.sent")},
-			Card: b.card(b.t("bot.sms.title"), "green", txt(b.t("bot.sms.sent", "n", number)), btnRow(b.btn("bot.btn.sms", "default", "a", "sms")))}
+			Card: b.card(b.t("bot.sms.title"), "green", txt(b.t("bot.sms.sent", "n", number)), b.navRow(""))}
 	case "sms_del":
 		id, err := strconv.ParseInt(v("id"), 10, 64)
 		if err == nil {
@@ -494,7 +494,7 @@ func (b *feishuBot) act(ctx context.Context, a string, v func(string) string, op
 		if err := b.s.update.installLatest(code); err != nil {
 			return b.failed(err)
 		}
-		return &cardAnswer{Card: b.card(b.t("bot.dev.title", "device", c.DeviceName), "turquoise", txt(b.t("bot.dev.installing", "v", ver)))}
+		return &cardAnswer{Card: b.card(b.t("bot.dev.title", "device", c.DeviceName), "turquoise", txt(b.t("bot.dev.installing", "v", ver)), b.navRow(""))}
 	case "ts_check":
 		tctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 		defer cancel()
@@ -530,7 +530,7 @@ func (b *feishuBot) act(ctx context.Context, a string, v func(string) string, op
 		}
 		log.Printf("reboot requested in Feishu")
 		b.s.rebootSoon()
-		return &cardAnswer{Card: b.card(b.t("bot.dev.title", "device", c.DeviceName), "red", txt(b.t("bot.dev.rebooting")))}
+		return &cardAnswer{Card: b.card(b.t("bot.dev.title", "device", c.DeviceName), "red", txt(b.t("bot.dev.rebooting")), b.navRow(""))}
 	}
 	return &cardAnswer{Card: b.menu("")}
 }
@@ -545,11 +545,11 @@ func (b *feishuBot) boxRecovery(ctx context.Context) map[string]any {
 		v, err := b.s.mihomo.version(vctx)
 		cancel()
 		if err == nil {
-			return b.card(title, "green", txt(b.t("bot.dev.boxOK", "v", v)), btnRow(b.btn("bot.btn.status", "default", "a", "status")))
+			return b.card(title, "green", txt(b.t("bot.dev.boxOK", "v", v)), b.navRow(""))
 		}
 		sleepCtx(ctx, 3*time.Second)
 	}
-	return b.card(title, "red", txt(b.t("bot.dev.boxSlow")), btnRow(b.btn("bot.btn.status", "default", "a", "status")))
+	return b.card(title, "red", txt(b.t("bot.dev.boxSlow")), b.navRow(""))
 }
 
 // ---------- cards ----------
@@ -592,8 +592,9 @@ func btnRow(btns ...map[string]any) map[string]any {
 	return map[string]any{"tag": "column_set", "flex_mode": "flow", "horizontal_spacing": "8px", "columns": cols}
 }
 
-func (b *feishuBot) navRow(skip string) map[string]any {
-	var btns []map[string]any
+// navRow leads with the card's own buttons, then the menu and the other cards
+func (b *feishuBot) navRow(skip string, lead ...map[string]any) map[string]any {
+	btns := append(lead, b.btn("bot.btn.menu", "default", "a", "menu"))
 	for _, n := range []string{"status", "sms", "proxy", "device"} {
 		if n != skip {
 			btns = append(btns, b.btn("bot.btn."+n, "default", "a", n))
@@ -712,8 +713,7 @@ func (b *feishuBot) statusCard(ctx context.Context) map[string]any {
 	if v := b.s.update.available(); v != "" {
 		els = append(els, note("\U0001F195 "+tr(b.lang(), "ev.update.info", map[string]string{"msg": v})))
 	}
-	els = append(els, btnRow(b.btn("bot.btn.refresh", "primary", "a", "status"), b.btn("bot.btn.proxy", "default", "a", "proxy"),
-		b.btn("bot.btn.sms", "default", "a", "sms"), b.btn("bot.btn.device", "default", "a", "device")))
+	els = append(els, b.navRow("status", b.btn("bot.btn.refresh", "primary", "a", "status")))
 	return b.card(b.t("bot.st.title", "device", c.DeviceName), "blue", els...)
 }
 
@@ -748,7 +748,7 @@ func (b *feishuBot) smsCard(ctx context.Context) map[string]any {
 			els = append(els, btnRow(b.btn("sms.reply", "default", "a", "sms_compose", "n", m.Number), b.btn("sms.delete", "default", "a", "sms_del", "id", id)))
 		}
 	}
-	els = append(els, btnRow(b.btn("bot.sms.compose", "primary", "a", "sms_compose"), b.btn("bot.btn.refresh", "default", "a", "sms")))
+	els = append(els, b.navRow("sms", b.btn("bot.sms.compose", "primary", "a", "sms_compose"), b.btn("bot.btn.refresh", "default", "a", "sms")))
 	return b.card(title, "wathet", els...)
 }
 
@@ -771,7 +771,7 @@ func (b *feishuBot) smsCompose(number string) map[string]any {
 func (b *feishuBot) smsConfirm(number, text string) map[string]any {
 	number, text, err := checkSMS(number, text)
 	if err != nil {
-		return b.card(b.t("bot.sms.title"), "red", txt(b.errText(err)), btnRow(b.btn("bot.sms.compose", "primary", "a", "sms_compose")))
+		return b.card(b.t("bot.sms.title"), "red", txt(b.errText(err)), b.navRow("", b.btn("bot.sms.compose", "primary", "a", "sms_compose")))
 	}
 	c := b.confirm(b.t("bot.sms.confirm", "n", number), "orange", "sms_send", "n", number, "t", text)
 	body := c["body"].(map[string]any)

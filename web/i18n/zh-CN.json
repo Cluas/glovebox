@@ -364,6 +364,7 @@
   "bot.cmd.bind": "绑定",
   "bot.menu.title": "Glovebox · {device}",
   "bot.menu.text": "点下面的按钮，或者直接发：状态、短信、节点、设备。发短信：短信 号码 内容",
+  "bot.btn.menu": "菜单",
   "bot.btn.status": "状态",
   "bot.btn.sms": "短信",
   "bot.btn.proxy": "节点",

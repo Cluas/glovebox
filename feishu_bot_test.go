@@ -236,6 +236,10 @@ func ansToast(ans map[string]any) (string, string) {
 
 // findValue returns the callback value of the first button or menu whose value has a=action
 func findValue(card map[string]any, action string) map[string]string {
+	// cards built in Go hold typed maps and slices; look at them as JSON does
+	b, _ := json.Marshal(card)
+	card = nil
+	json.Unmarshal(b, &card)
 	var found map[string]string
 	var walk func(v any)
 	walk = func(v any) {
@@ -492,6 +496,20 @@ func TestFeishuBotActions(t *testing.T) {
 	up := f.nextSent(t)
 	if up.Method != http.MethodPatch || up.To != "om_card" || !strings.Contains(cardJSON(up.Card), "Box is back") {
 		t.Errorf("late update %+v", up)
+	}
+}
+
+// every card but the menu leads back to it
+func TestFeishuBotCardsReachMenu(t *testing.T) {
+	s, _, _ := newTestBot(t, "ou_owner")
+	ctx := context.Background()
+	for name, card := range map[string]map[string]any{
+		"status": s.bot.statusCard(ctx), "sms": s.bot.smsCard(ctx), "proxy": s.bot.proxyCard(ctx),
+		"device": s.bot.deviceCard(), "confirm": s.bot.smsConfirm("bad", ""),
+	} {
+		if findValue(card, "menu") == nil {
+			t.Errorf("%s card has no menu button", name)
+		}
 	}
 }
 
